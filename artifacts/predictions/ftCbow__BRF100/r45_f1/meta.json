@@ -1,18 +1,9 @@
 {
   "shorthand": "ftCbow__BRF100",
-  "family": "paper_shallow",
-  "role": "shallow",
   "seed": 45,
   "fold": 1,
-  "wall_sec": 1.8746180534362793,
-  "n_train": 824,
-  "n_test": 206,
   "test_acc": 0.8300970873786407,
-  "test_f1_macro": 0.8238218558503614,
-  "test_classwise": 0.8389178073388598,
-  "train_acc": 0.9842233009708737,
-  "train_f1_macro": 0.9820753586735996,
-  "n_epochs": null,
-  "arch": null,
-  "emb": null
+  "wall_sec": 2.0778448581695557,
+  "n_test": 206,
+  "n_train": 824
 }

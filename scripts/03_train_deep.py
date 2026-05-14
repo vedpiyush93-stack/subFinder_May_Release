@@ -37,23 +37,81 @@ DL_CONFIGS = {
 }
 
 
-def _load_emb_seq(cache_dir, fold_key, arch, sentences, sentences_indices, max_seq_len: int = 30):
-    """Return (n, max_seq_len, 300) tensor of stacked token vectors per PUL.
+def _build_wv_for_arch(cache_dir, fold_key, arch):
+    """Return a KeyedVectors-like object for ``arch`` at ``fold_key``.
 
-    For FastText/Word2Vec we look up per-token vectors; for Doc2Vec we'd need
-    the document-vector model (not implemented in the lite cache); falls back
-    to zero-vector if cache missing.
+    For FastText configs: loads the FULL gensim model (via load_fasttext, which
+    auto-decompresses the .npy.xz sidecar from LFS) so ``wv[t]`` resolves OOV
+    tokens via character n-gram fallback. Falls back to ``FT_FULL_DIR`` env
+    var or ``/Users/ved/subFinder/reproducibility/fold_cache_v2/`` if the
+    release-repo .xz isn't local yet.
+
+    For W2V configs: uses the npz-only shim (Word2Vec has no n-gram OOV, so
+    npz IS bit-identical to the full model for inference — verified empirically).
+
+    For Doc2Vec: same npz-only path.
     """
+    if arch.startswith("fasttext_"):
+        import os
+        arch_stem = arch.replace("fasttext_", "")
+        sub = f"{arch}_dl_model"
+        model_fn = f"fasttext_{arch_stem}.model"
+        # Priority 1: FT_FULL_DIR (already-uncompressed, dev convenience)
+        ft_full = os.environ.get("FT_FULL_DIR")
+        if ft_full:
+            src_path = Path(ft_full)/fold_key/sub/model_fn
+            if src_path.exists():
+                from gensim.models import FastText
+                return FastText.load(str(src_path)).wv
+        # Priority 2: release-repo path with auto-decompress
+        from src.embeddings.loader import load_fasttext
+        rel_path = cache_dir/fold_key/sub/model_fn
+        if rel_path.exists():
+            return load_fasttext(rel_path).wv
+        raise FileNotFoundError(
+            f"FastText DL model not at {rel_path}"
+            + (f" or {Path(ft_full)/fold_key/sub/model_fn}" if ft_full else "")
+            + ". Either pull from LFS or set FT_FULL_DIR.")
+    # Non-FastText: npz lookup is functionally identical to full model
     npz = np.load(cache_dir/fold_key/f"{arch}_dl.npz", allow_pickle=True)
-    keys = npz["keys"]; vecs = npz["vectors"]
-    vec_size = vecs.shape[1] if vecs.shape[0] else 300
-    idx = {str(k): i for i, k in enumerate(keys)}
-    out = np.zeros((len(sentences), max_seq_len, vec_size), dtype=np.float32)
-    for i, s in enumerate(sentences):
-        toks = sentences[i][:max_seq_len]
+    class _NpzWV:
+        def __init__(self, keys, vecs):
+            self.vector_size = vecs.shape[1] if vecs.shape[0] else 300
+            self._idx = {str(k): i for i, k in enumerate(keys)}
+            self.vectors = vecs
+        def __getitem__(self, t):
+            i = self._idx.get(t)
+            if i is None: raise KeyError(t)
+            return self.vectors[i]
+        def __contains__(self, t): return t in self._idx
+    return _NpzWV(npz["keys"], npz["vectors"])
+
+
+def _load_emb_seq(cache_dir, fold_key, arch, sentences, sentences_indices,
+                   max_seq_len: int = 30, wv=None):
+    """Return (len(indices), max_seq_len, vec_size) tensor of token vectors.
+
+    ONLY the rows at ``sentences_indices`` are materialized, in that order
+    (so downstream indexing matches the indices array). For FastText configs,
+    OOV tokens get n-gram-resolved vectors (not zeros); for W2V/D2V, OOV
+    tokens contribute a zero vector.
+
+    Pass ``wv`` to reuse a previously-loaded model across calls in the same
+    fold (avoids re-loading the gensim model twice for outer vs test).
+    """
+    if wv is None:
+        wv = _build_wv_for_arch(cache_dir, fold_key, arch)
+    vec_size = int(wv.vector_size)
+    n = len(sentences_indices)
+    out = np.zeros((n, max_seq_len, vec_size), dtype=np.float32)
+    for i, idx in enumerate(sentences_indices):
+        toks = sentences[idx][:max_seq_len]
         for j, t in enumerate(toks):
-            if t in idx: out[i, j] = vecs[idx[t]]
-    return out
+            try:
+                out[i, j] = wv[t]              # n-gram fallback for FastText OOV
+            except (KeyError, AttributeError):
+                pass                            # zero for W2V/D2V OOV
+    return out, wv
 
 
 def main():
@@ -98,17 +156,22 @@ def main():
             out.mkdir(parents=True, exist_ok=True)
             t0 = time.time()
             try:
-                Xtr_outer = _load_emb_seq(cache_dir, fold_key, emb_arch, sentences,
-                                          tr_outer, max_seq_len=args.max_seq_len)
-                Xte_outer = _load_emb_seq(cache_dir, fold_key, emb_arch, sentences,
-                                          te, max_seq_len=args.max_seq_len)
-                # Keras categorical labels
+                # Materialize features ONLY for the rows we'll touch in this fold.
+                # Shape: Xtr_outer = (len(tr_outer), max_seq_len, vec_size) ≈ (824, 30, 300)
+                #        Xte_outer = (len(te), ...) ≈ (206, ...)
+                Xtr_outer, wv = _load_emb_seq(cache_dir, fold_key, emb_arch, sentences,
+                                                tr_outer, max_seq_len=args.max_seq_len)
+                Xte_outer, _ = _load_emb_seq(cache_dir, fold_key, emb_arch, sentences,
+                                                te, max_seq_len=args.max_seq_len, wv=wv)
+                # Keras categorical labels (aligned with tr_outer order)
                 cls = sorted(set(y))
                 onehot_tr = np.eye(len(cls))[[cls.index(c) for c in y[tr_outer]]].astype(np.float32)
                 model = build_dl(dl_arch, (args.max_seq_len, Xtr_outer.shape[-1]))
-                # Inner train/val split for EarlyStopping
-                model, hist = train_dl(model, Xtr_outer[tr_inner.searchsorted(tr_inner)],
-                                       onehot_tr[tr_inner.searchsorted(tr_inner)],
+                # Inner train/val split for EarlyStopping. tr_inner ⊆ tr_outer are GLOBAL
+                # indices; we need the POSITIONS within tr_outer that they map to.
+                inner_pos = tr_outer.searchsorted(tr_inner)
+                model, hist = train_dl(model, Xtr_outer[inner_pos],
+                                       onehot_tr[inner_pos],
                                        dl_arch, max_epochs=2000, verbose=0)
                 P_te = model.predict(Xte_outer, verbose=0)
                 P_tr = model.predict(Xtr_outer, verbose=0)

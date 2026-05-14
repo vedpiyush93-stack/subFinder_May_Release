@@ -1,18 +1,9 @@
 {
   "shorthand": "ftCbow_MM__ET500_sqrt",
-  "family": "ours_shallow",
-  "role": "shallow",
   "seed": 44,
   "fold": 1,
-  "wall_sec": 4.174636125564575,
-  "n_train": 824,
-  "n_test": 206,
   "test_acc": 0.9368932038834952,
-  "test_f1_macro": 0.912484472500276,
-  "test_classwise": 0.9075981620718463,
-  "train_acc": 0.9963592233009708,
-  "train_f1_macro": 0.9960890676018005,
-  "n_epochs": null,
-  "arch": null,
-  "emb": null
+  "wall_sec": 6.029403209686279,
+  "n_test": 206,
+  "n_train": 824
 }

@@ -1,18 +1,9 @@
 {
   "shorthand": "ftSg__BRF100",
-  "family": "paper_shallow",
-  "role": "shallow",
   "seed": 43,
   "fold": 2,
-  "wall_sec": 1.9370570182800293,
-  "n_train": 824,
-  "n_test": 206,
   "test_acc": 0.8398058252427184,
-  "test_f1_macro": 0.8293752994772499,
-  "test_classwise": 0.8346486006683375,
-  "train_acc": 0.9902912621359223,
-  "train_f1_macro": 0.9871210109434162,
-  "n_epochs": null,
-  "arch": null,
-  "emb": null
+  "wall_sec": 2.070864200592041,
+  "n_test": 206,
+  "n_train": 824
 }

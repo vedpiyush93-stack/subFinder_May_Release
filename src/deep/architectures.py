@@ -92,10 +92,18 @@ def build_dl(name: str, input_shape: tuple):
 
 
 def train_dl(model, X, y_onehot, name: str, max_epochs: int = 2000, verbose: int = 0):
-    """Train a DL model with paper-verbatim 75/25 stratified val split + EarlyStopping(p=30)."""
+    """Train a DL model with paper-verbatim 75/25 stratified val split + EarlyStopping(p=30).
+
+    Falls back to a random (non-stratified) 75/25 split if any class has <2 members
+    in the input — happens for very small classes in some outer folds.
+    """
     y_idx = y_onehot.argmax(axis=1)
-    tr, val = train_test_split(np.arange(len(X)), test_size=0.25,
-                                random_state=42, stratify=y_idx)
+    try:
+        tr, val = train_test_split(np.arange(len(X)), test_size=0.25,
+                                    random_state=42, stratify=y_idx)
+    except ValueError:
+        # Class with <2 members — drop stratification, keep the same random_state.
+        tr, val = train_test_split(np.arange(len(X)), test_size=0.25, random_state=42)
     cb = keras.callbacks.EarlyStopping(monitor="val_loss", patience=30, restore_best_weights=True)
     h = model.fit(X[tr], y_onehot[tr], validation_data=(X[val], y_onehot[val]),
                   batch_size=DL_BATCH[name], epochs=max_epochs, callbacks=[cb], verbose=verbose)

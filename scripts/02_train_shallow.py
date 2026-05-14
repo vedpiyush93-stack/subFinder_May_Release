@@ -47,8 +47,11 @@ SHALLOW_CONFIGS = {
 }
 
 
-def _load_emb(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
-    """Lightweight gensim-compatible wrapper over our cached npz."""
+def _load_emb_npz(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
+    """Lightweight npz-only KeyedVectors shim — for W2V/D2V (no n-grams).
+
+    For FastText we use _load_emb_ft (full model + n-gram fallback) instead.
+    """
     npz = np.load(cache_dir/fold_key/f"{arch}_{kind}.npz", allow_pickle=True)
     class _WV:
         def __init__(self, keys, vecs):
@@ -63,6 +66,39 @@ def _load_emb(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
     return _WV(npz["keys"], npz["vectors"])
 
 
+def _load_emb_ft(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
+    """Load the FULL FastText gensim model so wv[t] does n-gram fallback on OOV.
+
+    Priority:
+      1. If ``FT_FULL_DIR`` env var is set AND contains the model, use it
+         (development convenience — avoids the ~70 s xz decompress per fold).
+      2. Otherwise use the release-repo path with auto-decompress of .npy.xz
+         (the normal reviewer path after ``git clone`` + ``git lfs pull``).
+    """
+    import os
+    arch_stem = arch.replace("fasttext_", "")     # "cbow" or "sg"
+    sub = f"{arch}_{kind}_model"
+    model_fn = f"fasttext_{arch_stem}.model"
+
+    ft_full = os.environ.get("FT_FULL_DIR")
+    if ft_full:
+        src_path = Path(ft_full)/fold_key/sub/model_fn
+        if src_path.exists():
+            from gensim.models import FastText
+            return FastText.load(str(src_path)).wv
+
+    from src.embeddings.loader import load_fasttext
+    rel_path = cache_dir/fold_key/sub/model_fn
+    if rel_path.exists():
+        return load_fasttext(rel_path).wv
+
+    raise FileNotFoundError(
+        f"FastText full model not found at {rel_path}"
+        + (f" or {Path(ft_full)/fold_key/sub/model_fn}" if ft_full else "")
+        + ". Either pull from LFS (git lfs fetch) or set FT_FULL_DIR to a "
+        "local regenerated cache (see scripts/01_train_embeddings.py).")
+
+
 def _build_featurizer(spec, fold_key: str, cache_dir: Path):
     kind = spec[0]
     if kind == "countvec":
@@ -71,10 +107,14 @@ def _build_featurizer(spec, fold_key: str, cache_dir: Path):
                   "word2vec_cbow": "word2vec_cbow", "word2vec_sg": "word2vec_sg",
                   "doc2vec_dm": "doc2vec_dm", "doc2vec_dbow": "doc2vec_dbow"}
     if kind == "emb_mean":
-        wv = _load_emb(cache_dir, fold_key, arch_alias[spec[1]])
+        arch = arch_alias[spec[1]]
+        if arch.startswith("fasttext_"):
+            wv = _load_emb_ft(cache_dir, fold_key, arch, kind="shallow")
+        else:
+            wv = _load_emb_npz(cache_dir, fold_key, arch, kind="shallow")
         return EmbeddingMeanFeaturizer(wv, tokenizer="comma_pipe")
     if kind == "ft_meanmax":
-        wv = _load_emb(cache_dir, fold_key, "fasttext_cbow")
+        wv = _load_emb_ft(cache_dir, fold_key, "fasttext_cbow", kind="shallow")
         return EmbeddingMeanMaxFeaturizer(wv, tokenizer="comma_pipe")
     raise ValueError(f"unknown featurizer kind {kind!r}")
 
