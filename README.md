@@ -15,6 +15,33 @@
 
 **Headline:** `cpu__ET500_log2` (CountVec_cpu × OvR ExtraTrees‑500) reaches **0.9058 ± 0.0172** mean test accuracy across 25 trials, beats the published Balanced Random Forest baseline by **+6.16 pp** (paired t = 15.50, p ≈ 5 × 10⁻¹⁴) and the strongest published deep architecture by **+8.10 pp**. The deployed model is temperature‑calibrated (T ≈ 0.70) with leak‑free inner‑CV fitting.
 
+### 30-second mental model
+
+> **There is one model.** We call it `cpu__ET500_log2`. It was picked out of 29 candidates by the 5×5 RSKF benchmark, and then temperature-calibrated **using the same 5×5 protocol** — so the calibrated probabilities, the final deployed model, and the leave-one-token-out signature genes all describe the *same single fitted classifier*, just at different stages of the same pipeline.
+
+```
+            29 candidate configs                            ┐
+                    │   5×5 RSKF benchmark (725 fits)       │
+                    ▼                                       │
+   pick the winner → cpu__ET500_log2  (mean acc 0.9058)     │  same protocol,
+                    │                                       │  no leakage:
+                    │   same model, same 5×5 splits,        │  inner OOF on
+                    │   inner-5-fold OOF on each outer_tr   │  outer_tr only
+                    ▼                                       │
+   temperature scaling → calibrated cpu__ET500_log2  (T ≈ 0.70) ┘
+                    │
+                    ▼
+   artifacts/final_model.pkl  ← the deployed model
+                    │
+                    ▼
+   inference: predict_proba → / T → softmax → argmax       (returns calibrated probs)
+              │
+              └─> leave-one-token-out ablation runs on the CALIBRATED probs
+                  → the signature_genes you see in the inference output
+```
+
+Every probability the user (or the paper) sees comes from the calibrated model. The sig-gene Δ values are differences of calibrated probabilities (`P_cal(s | tokens) − P_cal(s | tokens \ {t})`), so signature genes always agree with the deployed inference call.
+
 </div>
 
 ---
