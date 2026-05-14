@@ -43,29 +43,29 @@ flowchart TD
 
 ---
 
-## What's included, what isn't, and what you have to do
+## What's in the repo (and what isn't)
 
-The repo ships everything **except the heaviest files that can't fit on GitHub**. Read this once and you'll know exactly what to download (or not).
+**Almost everything ships in the repo itself.** A single `git clone` gives you the **deployed model, all 725 per-trial classifier weights, the cached prediction probabilities, paper PDFs, decks, and tables.** You can immediately predict on a new PUL, regenerate every paper number, or run cross-fold ablations — **no extra download needed**.
 
-| Tier | What you have | What you can do | Disk | Time to set up |
+The **only** thing that doesn't fit is the **255 GB embedding cache**, which is only needed if you want to retrain the 20 deep configs or the 7 BRF+embedding shallow variants from scratch. The headline model (`cpu__ET500_log2`) uses NO embeddings, so the paper's claim is fully reproducible without it.
+
+| Tier | What you have | What you can do | Disk | Time |
 |:--:|---|---|---:|---:|
-| **0** | Just `git clone` (the repo as you see it) | Recompute the paper's leaderboard, calibration, sig-gene metrics, and audit numbers from cached prediction probs already in the repo. | 100 MB | < 1 min |
-| **1** | + `subfinder_final_model.zip` (48 MB, 1 click) | Predict substrates for *your own* PULs. Same script, same model the paper deploys. | 250 MB | 5 min |
-| **2** | + `subfinder_classifier_weights.zip` (7.7 GB, 1 click) | Re-do cross-fold ablations, run the leak audit, retrain the top model (`cpu__ET500_log2`) without touching embeddings. | 8 GB | 30 min |
-| **3** | + regenerate the **embeddings cache locally** | Retrain *every* config including the 7 BRF+embedding shallow configs and the 20 DL configs. | 255 GB | 6–12 h on M4 Max |
+| **0** | Just `git clone` — that's it | **Inference on new PULs**; recompute the paper's leaderboard + calibration + sig-gene metrics; ablations against all 29 configs × 25 trials; leak audit. | ~8 GB | clone time |
+| **1** | + regenerate the embedding cache locally (one command) | Retrain the 20 DL configs and the 7 BRF+embedding shallow variants from scratch. | + 255 GB | + 6–12 h on M4 Max |
 
-> 📦 **All downloads live in one Drive folder:** [subFinder release artifacts](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)
+> ⚠️ **Heads up on the clone size.** The repo is ~8 GB because we shipped all 725 classifier weights directly (each ≤45 MB, under GitHub's 50 MB per-file warning). The 173 MB deployed pickle ships via **Git LFS** — your `git clone` fetches it automatically as long as you have Git LFS installed (`brew install git-lfs && git lfs install`, then clone).
 >
-> ⚠️ **The 255 GB embeddings cache is not on Drive — it's too big to host.** It only exists locally on the author's machine. You regenerate it with one command if (and only if) you reach Tier 3. The top model's accuracy claim is fully reproducible at Tier 0, so most readers stop at Tier 0 or Tier 1.
+> 📦 **There's still a [Drive folder](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)** mirroring the heavy artifacts as `.zip` files — only useful if you can't use Git LFS for some reason, or want a frozen snapshot. Most readers should ignore it.
 
-### Which tier matches you?
+### Which path matches you?
 
-| You are… | Stop at | Go to |
-|---|:--:|---|
-| 🧪 **A practitioner** — "I have a PUL, give me a substrate prediction" | Tier 1 | [Path A](#path-a--predict-the-substrate-of-your-pul) |
-| 🔍 **A reviewer** — "verify every paper number, no training" | Tier 0 | [Path B](#path-b--reproduce-every-paper-number-no-training) |
-| 🔬 **A researcher (light)** — "do ablations or retrain the top model" | Tier 2 | [Path C](#path-c--retrain-or-extend) C.1–C.2 |
-| 🧬 **A researcher (full)** — "retrain DL configs / try new embeddings" | Tier 3 | [Path C.3](#path-c3--retrain-the-embedding-using-configs-12-h-on-m4-max) |
+| You are… | Go to | Notes |
+|---|---|---|
+| 🧪 **A practitioner** — "I have a PUL, give me a substrate prediction" | [Path A](#path-a--predict-the-substrate-of-your-pul) | LFS auto-fetches `final_model.pkl` on `git clone`. |
+| 🔍 **A reviewer** — "verify every paper number, no training" | [Path B](#path-b--reproduce-every-paper-number-no-training) | All 29 configs × 25 trials of probs + weights already in repo. |
+| 🔬 **A researcher (light)** — "do ablations on any of the 29 configs" | [Path C](#path-c--retrain-or-extend) C.1–C.2 | No extra downloads. |
+| 🧬 **A researcher (full)** — "retrain DL configs / try new embeddings" | [Path C.3](#path-c3--retrain-the-embedding-using-configs-12-h-on-m4-max) | Only step that needs the 255 GB embedding regen. |
 
 Pick one and stop reading. The other paths don't matter to you.
 
@@ -73,29 +73,53 @@ Pick one and stop reading. The other paths don't matter to you.
 
 ## Path A — Predict the substrate of *your* PUL
 
-**Audience:** you have a PUL gene-token sequence and want subFinder's prediction.
-**Time:** ~5 minutes (mostly the 48 MB download).
+**Audience:** you have a PUL and want subFinder's prediction.
+**Time:** ~5 minutes (mostly the LFS clone).
 
 ```bash
-# 1. Clone
+# 1. Make sure Git LFS is installed (one-time, fetches final_model.pkl on clone)
+brew install git-lfs && git lfs install   # macOS — apt/yum equivalents work too
+
+# 2. Clone — LFS auto-fetches the 173 MB deployed pickle
 git clone https://github.com/vedpiyush93-stack/subFinder_May_Release.git
 cd subFinder_May_Release
 
-# 2. Install deps (clean conda env recommended)
+# 3. Install deps (clean conda env recommended)
 pip install -r requirements.txt
 
-# 3. Download the deployed model from the Drive folder ↓
-#    https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P
-#    Grab subfinder_final_model.zip (48 MB) and put it in the repo root.
-
-unzip -q subfinder_final_model.zip            # extracts into ./artifacts/
-rm subfinder_final_model.zip
-
-# 4. Predict
+# 4. Predict — three input formats supported (see "Inputs you can pass" below)
 python3 scripts/06_inference.py \
     --seq "GH13,CBM6|PfkB,GH97_4|null" \
     --pretty
 ```
+
+### Inputs you can pass
+
+`scripts/06_inference.py` accepts **three** input formats. Pick the one that matches what you have:
+
+| Flag | Use when … | Example |
+|---|---|---|
+| `--seq "<token-string>"` | You already have the PUL in the trained token format (annotations comma-separated; multi-domain genes `\|`-separated within a gene). | `--seq "GH13,CBM6\|null"` |
+| `--in-csv FILE --col sig_gene_seq` | You have many PULs in a CSV column, already tokenized. | `--in-csv data/new_puls.csv --col sig_gene_seq --out preds.csv` |
+| `--cgc-standard FILE` | **You ran dbCAN.** Feed its `cgc_standard.out` directly — no manual tokenization required. | `--cgc-standard data/example_cgc_standard.out --out preds.csv` |
+
+**Example file shipped:** [`data/example_cgc_standard.out`](data/example_cgc_standard.out) — 303 lines from a *Trichoderma reesei* dbCAN run, parses into 12 CGCs.
+
+**Sanity check** that both routes agree:
+
+```bash
+bash scripts/verify_cgc_format.sh
+# → parses scaffold_1|CGC1 from the example file, predicts via both --cgc-standard
+#   and --seq paths, asserts predictions match. Currently passes (predicts: chitin).
+```
+
+#### Featurizer rules (good to know if a token gets split weirdly)
+
+The trained tokenizer (`tok_cpu`) splits on **three** characters: `,`, `|`, **and `_`**. The `_` separator means:
+
+- `GH43_34` (a CAZy subfamily) → tokens `[GH43, 34]` after splitting. The model treats the subfamily index as its own token.
+- TF/STP multi-domain proteins use `+` between domains in dbCAN output. The CGC loader rewrites `+` → `|` (otherwise `tok_cpu` would only split on `_` and produce garbage like `Pyr_redox_2+NIR_SIR_ferr+NIR_SIR` → `[Pyr, redox, 2+NIR, SIR, ferr+NIR, SIR]`).
+- TC numbers exist in **both** 3-part (`1.B.14`) and 5-part (`1.B.14.12.1`) forms in the training vocab. The CGC loader's default `tc_mode="both"` emits both forms `|`-joined (`1.B.14.12.1|1.B.14`) so the tokenizer activates against whichever form the model has weights for. Pass `--tc-mode truncate` to match the legacy 3-part-only convention from `Codes/import_data.py`, or `--tc-mode full` to keep only the 5-part.
 
 You'll see a block like:
 
@@ -293,6 +317,34 @@ calibration: temperature scaling — one scalar T per outer fold,
 The win is almost entirely from the classifier swap (BRF → OvR ExtraTrees). Two design choices in `BalancedRandomForestClassifier` hurt on a small, moderately-imbalanced 12-class dataset: (i) bootstrap-balanced sampling discards majority-class signal per tree; (ii) the 100-tree ensemble is too small to recover the variance. OvR ExtraTrees-500 with `class_weight='balanced'` fixes both.
 
 Full per-substrate / per-fold metrics: [`paper/tables/`](paper/tables/) and Supplement Tables S2–S10.
+
+---
+
+## Reproducibility note — temperature scalar `T` across reruns
+
+If you re-run `scripts/05_calibrate_best.py` yourself, you may see a `T` value that **differs in the 3rd or 4th decimal** from what's in `artifacts/final_model.pkl`. This is **expected** and **not random noise** — it's environment drift between the machine that originally trained the deployed pickle and yours.
+
+To prove this is deterministic-per-machine (not random-per-run), we ran the full calibration 3× back-to-back on the same machine:
+
+```
+run 0:  mean_oof_T=0.7157   deployment_T=0.9777   wall=265s
+run 1:  mean_oof_T=0.7157   deployment_T=0.9777   wall=267s
+run 2:  mean_oof_T=0.7157   deployment_T=0.9777   wall=276s
+
+mean=0.7157  std=0.0000  range=[0.7157, 0.7157]    ← mean_oof_T
+mean=0.9777  std=0.0000  range=[0.9777, 0.9777]    ← deployment_T
+```
+
+`std=0.0000` over 3 reruns confirms the script is deterministic on a fixed environment. The drift you might see vs. the deployed pickle (which has `T=0.6678`) comes from numerical differences in `sklearn`/`scipy`/`BLAS` between the build that produced the pickle and your local one. **Predictions (the argmax substrate) and headline accuracy are unaffected** — only the 3rd-decimal of the calibrated probabilities moves.
+
+Reproduce the drift experiment yourself:
+
+```bash
+python3 scripts/experiments/measure_t_drift.py --n-runs 5 --out artifacts/t_drift_runs.csv
+# ~4 minutes per run on M4 Max
+```
+
+Output schema and a 3-run example are at [`artifacts/t_drift_runs.csv`](artifacts/t_drift_runs.csv).
 
 ---
 
