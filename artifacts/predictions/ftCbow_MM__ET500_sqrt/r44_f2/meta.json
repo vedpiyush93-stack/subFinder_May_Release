@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftCbow_MM__ET500_sqrt",
+  "family": "ours_shallow",
+  "role": "shallow",
+  "seed": 44,
+  "fold": 2,
+  "wall_sec": 4.140584230422974,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.9174757281553398,
+  "test_f1_macro": 0.8873363447943281,
+  "test_classwise": 0.8763293650793651,
+  "train_acc": 0.9963592233009708,
+  "train_f1_macro": 0.9947480292748835,
+  "n_epochs": null,
+  "arch": null,
+  "emb": null
+}

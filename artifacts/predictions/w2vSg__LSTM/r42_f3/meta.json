@@ -1,0 +1,18 @@
+{
+  "shorthand": "w2vSg__LSTM",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 42,
+  "fold": 3,
+  "wall_sec": 15.236273050308228,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.6893203883495146,
+  "test_f1_macro": 0.4720779497847774,
+  "test_classwise": 0.5104242979242979,
+  "train_acc": 0.6820388349514563,
+  "train_f1_macro": 0.4687994032250182,
+  "n_epochs": 258,
+  "arch": "vanilla_lstm",
+  "emb": "word2vec_sg"
+}

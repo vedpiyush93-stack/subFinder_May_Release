@@ -1,0 +1,18 @@
+{
+  "shorthand": "w2vCbow__Trans",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 42,
+  "fold": 4,
+  "wall_sec": 81.87824320793152,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8398058252427184,
+  "test_f1_macro": 0.8182474097218013,
+  "test_classwise": 0.8232440476190477,
+  "train_acc": 0.9029126213592233,
+  "train_f1_macro": 0.8833553169040416,
+  "n_epochs": 69,
+  "arch": "transformer",
+  "emb": "word2vec_cbow"
+}

@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftCbow__Trans",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 44,
+  "fold": 1,
+  "wall_sec": 73.34193873405457,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8009708737864077,
+  "test_f1_macro": 0.8164473406859662,
+  "test_classwise": 0.8528923671357882,
+  "train_acc": 0.8859223300970874,
+  "train_f1_macro": 0.8764693295995002,
+  "n_epochs": 64,
+  "arch": "transformer",
+  "emb": "fasttext_cbow"
+}

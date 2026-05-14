@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftSg__LSTM",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 44,
+  "fold": 4,
+  "wall_sec": 23.648114919662476,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.558252427184466,
+  "test_f1_macro": 0.49590406888441924,
+  "test_classwise": 0.5239583333333334,
+  "train_acc": 0.8410194174757282,
+  "train_f1_macro": 0.7106061020212483,
+  "n_epochs": 406,
+  "arch": "vanilla_lstm",
+  "emb": "fasttext_sg"
+}

@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftCbow__JustAttn",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 42,
+  "fold": 4,
+  "wall_sec": 15.263350009918213,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.7475728155339806,
+  "test_f1_macro": 0.6737868291129162,
+  "test_classwise": 0.6720413614163614,
+  "train_acc": 0.8131067961165048,
+  "train_f1_macro": 0.7750410918664988,
+  "n_epochs": 256,
+  "arch": "just_attention",
+  "emb": "fasttext_cbow"
+}

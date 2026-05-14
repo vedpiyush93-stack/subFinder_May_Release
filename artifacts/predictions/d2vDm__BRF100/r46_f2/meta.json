@@ -1,0 +1,18 @@
+{
+  "shorthand": "d2vDm__BRF100",
+  "family": "paper_shallow",
+  "role": "shallow",
+  "seed": 46,
+  "fold": 2,
+  "wall_sec": 1.960031270980835,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.5776699029126213,
+  "test_f1_macro": 0.5668449069467042,
+  "test_classwise": 0.5736656143564037,
+  "train_acc": 0.9902912621359223,
+  "train_f1_macro": 0.9875342442158367,
+  "n_epochs": null,
+  "arch": null,
+  "emb": null
+}

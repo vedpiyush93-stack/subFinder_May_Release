@@ -1,0 +1,24 @@
+# Core
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+scikit-learn>=1.3
+joblib>=1.3
+
+# Word embeddings
+gensim>=4.3
+
+# Class-imbalance baseline (paper's BRF)
+imbalanced-learn>=0.11
+
+# Deep architectures (paper-verbatim)
+keras>=3.0
+tensorflow>=2.15   # backend for keras 3 — torch / jax also work
+
+# Inference + paper artifacts
+pymupdf>=1.23      # PDF layout assertions in tests
+python-pptx>=0.6   # static deck builder
+plotly>=5.18       # interactive deck builder
+
+# Notebook (optional)
+jupyter>=1.0

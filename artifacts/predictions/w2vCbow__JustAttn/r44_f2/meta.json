@@ -1,0 +1,18 @@
+{
+  "shorthand": "w2vCbow__JustAttn",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 44,
+  "fold": 2,
+  "wall_sec": 21.881967782974243,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8203883495145631,
+  "test_f1_macro": 0.7755572667954921,
+  "test_classwise": 0.7466223250433778,
+  "train_acc": 0.8786407766990292,
+  "train_f1_macro": 0.8613169100388602,
+  "n_epochs": 369,
+  "arch": "just_attention",
+  "emb": "word2vec_cbow"
+}

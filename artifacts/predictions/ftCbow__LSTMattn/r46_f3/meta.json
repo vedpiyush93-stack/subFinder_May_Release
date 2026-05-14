@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftCbow__LSTMattn",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 46,
+  "fold": 3,
+  "wall_sec": 11.606168031692505,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8300970873786407,
+  "test_f1_macro": 0.8121378912259415,
+  "test_classwise": 0.8213064713064712,
+  "train_acc": 0.9162621359223301,
+  "train_f1_macro": 0.9075460165026454,
+  "n_epochs": 156,
+  "arch": "lstm_with_attention",
+  "emb": "fasttext_cbow"
+}

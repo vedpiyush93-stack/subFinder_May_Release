@@ -1,0 +1,107 @@
+"""End-to-end inference on new PULs.
+
+A ``PULPredictor`` bundles:
+  * the fitted sklearn pipeline (CountVec_cpu × OvR(ExtraTrees 500, log2))
+  * the temperature scalar T (one for deployment)
+  * a Dirichlet-uniform null for per-substrate p-values
+
+and exposes a single ``predict(seq)`` method that returns a dict:
+
+    {
+      "predicted":          "alginate",
+      "confidence":          0.92,
+      "probabilities":      {"alginate": 0.92, "alpha-glucan": 0.01, ...},
+      "p_values":           {"alginate": 6.0e-5, "alpha-glucan": 0.91, ...},
+      "is_significant":      True,
+      "signature_genes":   [{"token": "PL7",  "delta": +0.18, "is_lit_canonical": True},
+                              {"token": "PL17", "delta": +0.11, "is_lit_canonical": True},
+                              ...],
+      "oov_proportion":     0.0,     # fraction of PUL tokens NOT in train vocab
+      "refuse_to_predict":  False    # True if OOV > 0.10 (use OOD heuristic)
+    }
+"""
+from __future__ import annotations
+import json
+import pickle
+from pathlib import Path
+import numpy as np
+
+from src.preprocessing.tokenizers import tok_cpu, is_cazy
+from src.calibration.temperature import apply_temperature
+from src.ablation.leave_one_token_out import ablate_pul_for_class
+from src.lit_validation.canon import build_canon
+
+
+def p_value_dirichlet_uniform(p: float, K: int = 12) -> float:
+    """p-value under a uniform-Dirichlet null hypothesis over K classes."""
+    return float((1.0 - p) ** (K - 1))
+
+
+class PULPredictor:
+    """End-to-end inference for one PUL."""
+
+    OOV_REFUSE_THRESHOLD = 0.10
+
+    def __init__(self, pipeline, T: float, lit_tsv_path: str | None = None):
+        self.pipeline = pipeline
+        self.T = float(T)
+        self.classes_ = list(pipeline.named_steps["vr"].classes_)
+        self._vocab = set(pipeline.named_steps["cv"].vocabulary_.keys())
+        self.canon = build_canon(lit_tsv_path) if lit_tsv_path else None
+
+    def oov_proportion(self, seq: str) -> float:
+        toks = tok_cpu(seq)
+        if not toks: return 0.0
+        return sum(1 for t in toks if t not in self._vocab) / len(toks)
+
+    def predict(self, seq: str, top_k: int = 5) -> dict:
+        oov = self.oov_proportion(seq)
+        refuse = oov > self.OOV_REFUSE_THRESHOLD
+
+        # Probabilities (calibrated)
+        p_raw = self.pipeline.predict_proba([seq])
+        p_cal = apply_temperature(p_raw, self.T)[0]
+        argmax_idx = int(p_cal.argmax())
+        predicted = self.classes_[argmax_idx]
+        confidence = float(p_cal[argmax_idx])
+
+        probs_dict = {c: float(p_cal[i]) for i, c in enumerate(self.classes_)}
+        pvals = {c: p_value_dirichlet_uniform(probs_dict[c]) for c in self.classes_}
+
+        # Signature genes via leave-one-token-out ablation against the PREDICTED class,
+        # on the CALIBRATED probabilities (matches the deployment story).
+        sig = []
+        if not refuse:
+            try:
+                deltas = ablate_pul_for_class(self.pipeline, seq, predicted,
+                                              top_k=top_k, apply_temp=self.T)
+                for tok, d in deltas:
+                    is_lit = (self.canon is not None
+                              and is_cazy(tok)
+                              and tok in self.canon.get(predicted, set()))
+                    sig.append({"token": tok, "delta": float(d),
+                                "is_lit_canonical": bool(is_lit)})
+            except Exception as e:  # be lenient — degraded mode still returns probs
+                sig = [{"error": str(e)}]
+
+        return {
+            "predicted":         predicted,
+            "confidence":        confidence,
+            "probabilities":     probs_dict,
+            "p_values":          pvals,
+            "is_significant":    pvals[predicted] < 0.05,
+            "signature_genes":   sig,
+            "oov_proportion":    oov,
+            "refuse_to_predict": refuse,
+        }
+
+
+def load_predictor(model_pkl_path: str | Path,
+                   lit_tsv_path: str | Path | None = None) -> PULPredictor:
+    """Load a ``PULPredictor`` from a single .pkl file.
+
+    The pickle should contain a dict ``{"pipeline": <sklearn Pipeline>, "T": <float>}``.
+    """
+    with open(model_pkl_path, "rb") as f:
+        obj = pickle.load(f)
+    return PULPredictor(obj["pipeline"], obj["T"], str(lit_tsv_path) if lit_tsv_path else None)

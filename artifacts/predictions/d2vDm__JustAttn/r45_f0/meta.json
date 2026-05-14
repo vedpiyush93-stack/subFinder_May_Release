@@ -1,0 +1,18 @@
+{
+  "shorthand": "d2vDm__JustAttn",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 45,
+  "fold": 0,
+  "wall_sec": 21.171289205551147,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.7378640776699029,
+  "test_f1_macro": 0.7120863109993546,
+  "test_classwise": 0.6964688564359617,
+  "train_acc": 0.8398058252427184,
+  "train_f1_macro": 0.80638350873203,
+  "n_epochs": 349,
+  "arch": "just_attention",
+  "emb": "doc2vec_dm"
+}

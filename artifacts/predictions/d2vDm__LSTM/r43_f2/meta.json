@@ -1,0 +1,18 @@
+{
+  "shorthand": "d2vDm__LSTM",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 43,
+  "fold": 2,
+  "wall_sec": 15.488407135009766,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.5776699029126213,
+  "test_f1_macro": 0.3620361930211451,
+  "test_classwise": 0.4243912666281087,
+  "train_acc": 0.6553398058252428,
+  "train_f1_macro": 0.41238590969099986,
+  "n_epochs": 253,
+  "arch": "vanilla_lstm",
+  "emb": "doc2vec_dm"
+}

@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftCbow__BRF100",
+  "family": "paper_shallow",
+  "role": "shallow",
+  "seed": 45,
+  "fold": 3,
+  "wall_sec": 1.9197478294372559,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8883495145631068,
+  "test_f1_macro": 0.8785696470584242,
+  "test_classwise": 0.8956043956043956,
+  "train_acc": 0.9793689320388349,
+  "train_f1_macro": 0.9749593959900338,
+  "n_epochs": null,
+  "arch": null,
+  "emb": null
+}

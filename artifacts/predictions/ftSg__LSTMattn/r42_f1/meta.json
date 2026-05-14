@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftSg__LSTMattn",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 42,
+  "fold": 1,
+  "wall_sec": 13.362032175064087,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8592233009708737,
+  "test_f1_macro": 0.8273671655394345,
+  "test_classwise": 0.82123570143307,
+  "train_acc": 0.9186893203883495,
+  "train_f1_macro": 0.9059656575811142,
+  "n_epochs": 194,
+  "arch": "lstm_with_attention",
+  "emb": "fasttext_sg"
+}

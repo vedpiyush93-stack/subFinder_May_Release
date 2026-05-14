@@ -1,0 +1,53 @@
+# =============================================================================
+# subFinder release — git ignore rules (push-ready)
+# =============================================================================
+#
+# Anything excluded here is distributed via Google Drive zips. See README §5
+# for download links and where to extract.
+
+# ---------------------------------------------------------------------------
+# Heavy artifacts — get them from `subfinder_final_model.zip`
+# ---------------------------------------------------------------------------
+artifacts/final_model.pkl              # 176 MB — exceeds GitHub's 100 MB hard limit
+artifacts/calibration/*.npz            # ~85 KB each but bundled with final_model.zip
+artifacts/calibration/*.json
+
+# ---------------------------------------------------------------------------
+# Heavy classifier weights — get them from `subfinder_classifier_weights.zip`
+# ---------------------------------------------------------------------------
+artifacts/predictions/*/r*_f*/classifier.joblib   # 25 × ~45 MB = ~1.1 GB
+artifacts/predictions/*/r*_f*/classifier.keras    # 25 × ~44 MB = ~1.1 GB
+
+# ---------------------------------------------------------------------------
+# Embedding cache — NOT shipped. Reviewers regenerate it locally via
+#   `python3 scripts/01_train_embeddings.py --retrain`  (~6 h on M4 Max)
+# Only needed for the 7 BRF+embedding shallow configs and the 20 DL configs.
+# The top model (cpu__ET500_log2) uses no embeddings — fully reproducible
+# without ever generating this cache. See README §5 Tier B for details.
+# ---------------------------------------------------------------------------
+artifacts/embeddings_cache/
+
+# ---------------------------------------------------------------------------
+# Python / build noise
+# ---------------------------------------------------------------------------
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store
+*.egg-info/
+
+# ---------------------------------------------------------------------------
+# Jupyter / LaTeX noise
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+paper/*.aux paper/*.log paper/*.bbl paper/*.blg paper/*.toc paper/*.synctex.gz
+paper/*.fdb_latexmk paper/*.fls paper/*.out
+
+# ---------------------------------------------------------------------------
+# Release zips themselves (these live OUTSIDE the repo at /Users/ved/release_zips/)
+# but listed here so they're never accidentally committed if someone moves them in
+# ---------------------------------------------------------------------------
+*.zip
+release_zips/

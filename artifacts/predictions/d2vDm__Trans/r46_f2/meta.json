@@ -1,0 +1,18 @@
+{
+  "shorthand": "d2vDm__Trans",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 46,
+  "fold": 2,
+  "wall_sec": 101.7441918849945,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.7961165048543689,
+  "test_f1_macro": 0.7723652246154148,
+  "test_classwise": 0.7785046751494119,
+  "train_acc": 0.8725728155339806,
+  "train_f1_macro": 0.8621639915476123,
+  "n_epochs": 74,
+  "arch": "transformer",
+  "emb": "doc2vec_dm"
+}

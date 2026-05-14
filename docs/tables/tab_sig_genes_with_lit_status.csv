@@ -1,0 +1,37 @@
+substrate,feature,importance,mark,lit_status
+alginate,PL17,0.1254910132209487,LIT,1:1 exact lit match
+alginate,PL6,0.1104049937929367,LIT,1:1 exact lit match
+alginate,GntR,0.0654478196713409,—,non-CAZy: lit cannot check
+alpha-glucan,GH13,0.0936943127003688,LIT,1:1 exact lit match
+alpha-glucan,LacI,0.0584572530796052,—,non-CAZy: lit cannot check
+alpha-glucan,GH97,0.0471136210548823,LIT,1:1 exact lit match
+alpha-mannan,GH99,0.1189647103947965,LIT,1:1 exact lit match
+alpha-mannan,GH92,0.1171155133887106,miss,CAZy not in lit-canon
+alpha-mannan,GH125,0.0892910199854149,LIT,1:1 exact lit match
+arabinogalactan,GH51,0.0965453282745844,LIT,via collapse ← arabinan
+arabinogalactan,GH43,0.0525517957251213,LIT,"via collapse ← arabinan, arabinogalactan protein"
+arabinogalactan,24,0.0474864754088711,—,non-CAZy: lit cannot check
+beta-glucan,GH3,0.0439442593691929,LIT,1:1 exact lit match
+beta-glucan,GH1,0.0340391753468897,LIT,1:1 exact lit match
+beta-glucan,4,0.0313101926625004,—,non-CAZy: lit cannot check
+beta-mannan,GH26,0.0693289649375366,LIT,1:1 exact lit match
+beta-mannan,GH130,0.0592046568933058,LIT,1:1 exact lit match
+beta-mannan,GH42,0.0444878166231592,miss,CAZy not in lit-canon
+chitin,GH4,0.1498899540008612,miss,CAZy not in lit-canon
+chitin,4.A.3.2.1,0.0637639933070668,—,non-CAZy: lit cannot check
+chitin,4.A.3.2.7,0.0421785637044747,—,non-CAZy: lit cannot check
+fructan,GH32,0.2201436737114974,LIT,1:1 exact lit match
+fructan,2.A.1.7.17,0.043173153654527,—,non-CAZy: lit cannot check
+fructan,PfkB,0.0282565444342103,—,non-CAZy: lit cannot check
+galactan,GH42,0.0446469061363719,miss,CAZy not in lit-canon
+galactan,GH53,0.0375118396358387,miss,CAZy not in lit-canon
+galactan,,0.0349323711158004,—,non-CAZy: lit cannot check
+host glycan,CE9,0.0444411453452862,LIT,1:1 exact lit match
+host glycan,LacI,0.0375380103439196,—,non-CAZy: lit cannot check
+host glycan,CBM32,0.0316860975369407,LIT,1:1 exact lit match
+pectin,GH28,0.0488399837803032,LIT,1:1 exact lit match
+pectin,PL1,0.0384048057071507,LIT,1:1 exact lit match
+pectin,GH105,0.0355389083869102,LIT,1:1 exact lit match
+xylan,GH10,0.0744343687591451,LIT,1:1 exact lit match
+xylan,GH43,0.0586664669119696,LIT,1:1 exact lit match
+xylan,GH67,0.0369160880910726,LIT,1:1 exact lit match

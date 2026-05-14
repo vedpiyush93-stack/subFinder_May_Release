@@ -1,0 +1,18 @@
+{
+  "shorthand": "ftSg__Trans",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 45,
+  "fold": 1,
+  "wall_sec": 93.19502806663513,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8349514563106796,
+  "test_f1_macro": 0.8203377197634901,
+  "test_classwise": 0.8122631498618341,
+  "train_acc": 0.9029126213592233,
+  "train_f1_macro": 0.89016213279703,
+  "n_epochs": 86,
+  "arch": "transformer",
+  "emb": "fasttext_sg"
+}

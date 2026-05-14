@@ -1,0 +1,18 @@
+{
+  "shorthand": "cpu__ET500_log2",
+  "family": "ours_shallow",
+  "role": "shallow",
+  "seed": 43,
+  "fold": 2,
+  "wall_sec": 4.618254899978638,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.9077669902912622,
+  "test_f1_macro": 0.8984668319244141,
+  "test_classwise": 0.8892820994794679,
+  "train_acc": 0.9975728155339806,
+  "train_f1_macro": 0.9959778783308195,
+  "n_epochs": null,
+  "arch": null,
+  "emb": null
+}

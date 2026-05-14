@@ -1,0 +1,18 @@
+{
+  "shorthand": "w2vSg__Trans",
+  "family": "paper_DL",
+  "role": "dl",
+  "seed": 46,
+  "fold": 2,
+  "wall_sec": 94.19027519226074,
+  "n_train": 824,
+  "n_test": 206,
+  "test_acc": 0.8058252427184466,
+  "test_f1_macro": 0.784601136445291,
+  "test_classwise": 0.7797745164192532,
+  "train_acc": 0.8919902912621359,
+  "train_f1_macro": 0.8809508744355572,
+  "n_epochs": 75,
+  "arch": "transformer",
+  "emb": "word2vec_sg"
+}
