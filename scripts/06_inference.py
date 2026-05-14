@@ -24,11 +24,21 @@ Examples:
 from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from src.inference import load_predictor
+
+
+def _json_default(o):
+    """Make numpy scalars / arrays JSON-serializable."""
+    if isinstance(o, np.integer):  return int(o)
+    if isinstance(o, np.floating): return float(o)
+    if isinstance(o, np.bool_):    return bool(o)
+    if isinstance(o, np.ndarray):  return o.tolist()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
 
 def main():
@@ -47,10 +57,10 @@ def main():
     pred = load_predictor(args.model, args.lit)
     if args.seq:
         out = pred.predict(args.seq, top_k=args.top_k)
-        if args.pretty: print(json.dumps(out, indent=2))
-        else: print(json.dumps(out))
+        if args.pretty: print(json.dumps(out, indent=2, default=_json_default))
+        else: print(json.dumps(out, default=_json_default))
         if args.out:
-            with open(args.out, "w") as f: json.dump(out, f, indent=2)
+            with open(args.out, "w") as f: json.dump(out, f, indent=2, default=_json_default)
         return
 
     df = pd.read_csv(args.in_csv)

@@ -107,8 +107,32 @@ def load_predictor(model_pkl_path: str | Path,
                    lit_tsv_path: str | Path | None = None) -> PULPredictor:
     """Load a ``PULPredictor`` from a single .pkl file.
 
-    The pickle should contain a dict ``{"pipeline": <sklearn Pipeline>, "T": <float>}``.
+    The deployed final_model.pkl is a flat dict of components:
+      {"classifier", "vectorizer", "label_encoder", "temperature",
+       "class_names", ...}
+    We wrap it back into an sklearn Pipeline with the named steps
+    ``cv`` (CountVectorizer) and ``vr`` (OvR(ExtraTrees)) so ``PULPredictor``
+    can treat it uniformly.
     """
+    # The deployed pickle was saved from a script where ``tok_cpu`` lived in
+    # ``__main__``. Inject it so unpickling resolves the reference regardless
+    # of which script (or notebook) is loading the model.
+    import sys
+    import numpy as np
+    from sklearn.pipeline import Pipeline
+    sys.modules['__main__'].tok_cpu = tok_cpu
     with open(model_pkl_path, "rb") as f:
         obj = pickle.load(f)
-    return PULPredictor(obj["pipeline"], obj["T"], str(lit_tsv_path) if lit_tsv_path else None)
+    # Support both shapes: the deployed flat-dict and the older Pipeline form.
+    if "pipeline" in obj and "T" in obj:
+        pipeline, T = obj["pipeline"], obj["T"]
+    else:
+        pipeline = Pipeline([("cv", obj["vectorizer"]), ("vr", obj["classifier"])])
+        T = float(obj["temperature"])
+        # The classifier was trained on label-encoded ints (0..11); the deployed
+        # pickle carries the human-readable substrate names separately. Re-label
+        # the classes_ attribute so downstream code (and predict_proba output)
+        # speaks substrate strings, not int64s.
+        if "class_names" in obj:
+            pipeline.named_steps["vr"].classes_ = np.array(list(obj["class_names"]))
+    return PULPredictor(pipeline, T, str(lit_tsv_path) if lit_tsv_path else None)

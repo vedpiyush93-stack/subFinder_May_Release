@@ -4,27 +4,32 @@
 #
 # Anything excluded here is distributed via Google Drive zips. See README §5
 # for download links and where to extract.
+# Comments must be on their own line — inline comments break gitignore patterns.
 
 # ---------------------------------------------------------------------------
-# Heavy artifacts — get them from `subfinder_final_model.zip`
+# Heavy artifacts — distributed via subfinder_final_model.zip
 # ---------------------------------------------------------------------------
-artifacts/final_model.pkl              # 176 MB — exceeds GitHub's 100 MB hard limit
-artifacts/calibration/*.npz            # ~85 KB each but bundled with final_model.zip
+# 176 MB (exceeds GitHub's 100 MB hard limit)
+artifacts/final_model.pkl
+# ~85 KB each, bundled with final_model.zip
+artifacts/calibration/*.npz
 artifacts/calibration/*.json
 
 # ---------------------------------------------------------------------------
-# Heavy classifier weights — get them from `subfinder_classifier_weights.zip`
+# Heavy classifier weights — distributed via subfinder_classifier_weights.zip
+# 25 × ~45 MB = ~1.1 GB for joblib, same again for keras
 # ---------------------------------------------------------------------------
-artifacts/predictions/*/r*_f*/classifier.joblib   # 25 × ~45 MB = ~1.1 GB
-artifacts/predictions/*/r*_f*/classifier.keras    # 25 × ~44 MB = ~1.1 GB
+artifacts/predictions/*/r*_f*/classifier.joblib
+artifacts/predictions/*/r*_f*/classifier.keras
 
 # ---------------------------------------------------------------------------
-# Embedding cache — NOT shipped. Reviewers regenerate it locally via
-#   `python3 scripts/01_train_embeddings.py --retrain`  (~6 h on M4 Max)
+# Embedding cache — NOT shipped. ~255 GB raw. Reviewers regenerate locally via
+#   python3 scripts/01_train_embeddings.py --retrain    (~6 h on M4 Max)
 # Only needed for the 7 BRF+embedding shallow configs and the 20 DL configs.
-# The top model (cpu__ET500_log2) uses no embeddings — fully reproducible
-# without ever generating this cache. See README §5 Tier B for details.
+# The top model (cpu__ET500_log2) uses NO embeddings — headline results are
+# fully reproducible without this cache. See README §5 Tier B.
 # ---------------------------------------------------------------------------
+artifacts/embeddings_cache
 artifacts/embeddings_cache/
 
 # ---------------------------------------------------------------------------
@@ -42,8 +47,15 @@ __pycache__/
 # ---------------------------------------------------------------------------
 .ipynb_checkpoints/
 notebooks/.ipynb_checkpoints/
-paper/*.aux paper/*.log paper/*.bbl paper/*.blg paper/*.toc paper/*.synctex.gz
-paper/*.fdb_latexmk paper/*.fls paper/*.out
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.toc
+paper/*.synctex.gz
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.out
 
 # ---------------------------------------------------------------------------
 # Release zips themselves (these live OUTSIDE the repo at /Users/ved/release_zips/)

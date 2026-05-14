@@ -19,15 +19,31 @@
 
 ---
 
-## Pick your path
+## What's included, what isn't, and what you have to do
 
-Three reader profiles. Pick one and stop reading — the other two paths don't matter to you.
+The repo ships everything **except the heaviest files that can't fit on GitHub**. Read this once and you'll know exactly what to download (or not).
 
-| You are… | You want… | Path | Time |
-|---|---|---|---|
-| 🧪 **A practitioner** | a substrate prediction for *your* PUL | [Path A](#path-a--predict-the-substrate-of-your-pul) | 5 min |
-| 🔍 **A reviewer** | every paper number to recompute, no training | [Path B](#path-b--reproduce-every-paper-number-no-training) | 10 min |
-| 🔬 **A researcher** | to retrain configs or do your own ablations | [Path C](#path-c--retrain-or-extend) | 30 min – 12 h |
+| Tier | What you have | What you can do | Disk | Time to set up |
+|:--:|---|---|---:|---:|
+| **0** | Just `git clone` (the repo as you see it) | Recompute the paper's leaderboard, calibration, sig-gene metrics, and audit numbers from cached prediction probs already in the repo. | 100 MB | < 1 min |
+| **1** | + `subfinder_final_model.zip` (48 MB, 1 click) | Predict substrates for *your own* PULs. Same script, same model the paper deploys. | 250 MB | 5 min |
+| **2** | + `subfinder_classifier_weights.zip` (7.7 GB, 1 click) | Re-do cross-fold ablations, run the leak audit, retrain the top model (`cpu__ET500_log2`) without touching embeddings. | 8 GB | 30 min |
+| **3** | + regenerate the **embeddings cache locally** | Retrain *every* config including the 7 BRF+embedding shallow configs and the 20 DL configs. | 255 GB | 6–12 h on M4 Max |
+
+> 📦 **All downloads live in one Drive folder:** [subFinder release artifacts](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)
+>
+> ⚠️ **The 255 GB embeddings cache is not on Drive — it's too big to host.** It only exists locally on the author's machine. You regenerate it with one command if (and only if) you reach Tier 3. The top model's accuracy claim is fully reproducible at Tier 0, so most readers stop at Tier 0 or Tier 1.
+
+### Which tier matches you?
+
+| You are… | Stop at | Go to |
+|---|:--:|---|
+| 🧪 **A practitioner** — "I have a PUL, give me a substrate prediction" | Tier 1 | [Path A](#path-a--predict-the-substrate-of-your-pul) |
+| 🔍 **A reviewer** — "verify every paper number, no training" | Tier 0 | [Path B](#path-b--reproduce-every-paper-number-no-training) |
+| 🔬 **A researcher (light)** — "do ablations or retrain the top model" | Tier 2 | [Path C](#path-c--retrain-or-extend) C.1–C.2 |
+| 🧬 **A researcher (full)** — "retrain DL configs / try new embeddings" | Tier 3 | [Path C.3](#path-c3--retrain-the-embedding-using-configs-12-h-on-m4-max) |
+
+Pick one and stop reading. The other paths don't matter to you.
 
 ---
 
@@ -80,7 +96,7 @@ python3 scripts/06_inference.py --in-csv data/new_puls.csv --col sig_gene_seq --
 | `predicted substrate` | argmax over the 12 classes (`alpha-glucan`, `beta-glucan`, `pectin`, `xylan`, …) |
 | `calibrated probs` | full probability vector after temperature scaling — these are well-calibrated (ECE ≈ 0.03) |
 | `top-5 sig genes` | the 5 tokens whose **removal** drops the predicted-class probability the most (leave-one-token-out Δ-prob) |
-| `OOV proportion` | fraction of your PUL's tokens that are **not in the training vocabulary** — see [What "unknown" means](#what-unknown-tokens-mean-the-oov-concept) |
+| `OOV proportion` | fraction of your PUL's tokens that are **not in the training vocabulary** — [jump to the explanation ↓](#unknown-tokens) |
 | `refuse_to_predict` | **Purely informational — a "needs manual review" caveat.** `True` when `OOV > 0.10`. **The inference is identical regardless of this flag** — you still get the substrate, calibrated probabilities, p-values, *and* signature genes for every PUL. The flag and the `OOV proportion` are just two extra fields you can use to decide how much to trust the result. |
 
 ---
@@ -202,7 +218,8 @@ python3 scripts/04_benchmark.py
 
 ---
 
-## What "unknown" tokens mean — the OOV concept
+<a id="unknown-tokens"></a>
+## What "unknown" tokens mean (the OOV concept)
 
 The model's vocabulary is finite. It's built by `CountVectorizer(tokenizer=tok_cpu).fit(outer_train)` — **fit per fold on outer-train only**, so it's leak-free. For seed 42 the typical fold-vocab size is ~488 tokens.
 
@@ -223,7 +240,7 @@ When you give the deployed model a new PUL, some of its tokens may not be in thi
 | 10–25%     |  39 |  3.8% | 15.1% | **0.641** |
 | ≥25%       |  18 |  1.7% | 35.0% | **0.611** |
 
-Point-biserial *r*(correct, OOV) = **−0.170**, *p* = 3.9 × 10⁻⁸.
+**Plain-English read on these numbers:** as the share of unknown tokens in a PUL goes up, the model gets the answer wrong more often. Across all 1,030 test PULs the trend is statistically significant (we ran the standard correlation test for a yes/no outcome against a continuous predictor; the chance of seeing a relationship this strong by accident is roughly 4 in a hundred million).
 
 So: ~94 % of test PULs have ≤10 % OOV and the model is reliable on them (accuracy 0.91 – 1.00). Past 10 % OOV accuracy collapses to ~0.62 — which is exactly why `predict_one` raises `refuse_to_predict=True` when `oov_proportion > 0.10`. **The prediction is computed identically** — same substrate, same calibrated probabilities, same p-values, same signature genes — the flag is just an explicit caveat that downstream tooling (or a human reviewer) can use to triage which PULs deserve a closer look.
 
