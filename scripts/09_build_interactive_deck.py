@@ -822,12 +822,11 @@ from scipy.stats import pointbiserialr as _pbr2
 r_oov, p_oov = _pbr2(correct_mask.astype(int), oov_props)
 
 bar_colors_8c = [SAGE if r[2] >= 0.9 else ORANGE if r[2] >= 0.7 else CRIMSON for r in buc_rows]
-# Variable widths proportional to n_PULs
-widths = np.array([max(r[1], 1) for r in buc_rows], dtype=float)
-widths = 0.75 * widths / widths.max()
+# Uniform-width bars — bucket density is shown via the n= annotation under each bar.
+total_n_8c = sum(r[1] for r in buc_rows)
 fig8c = go.Figure(data=go.Bar(
     x=[r[0] for r in buc_rows], y=[r[2] for r in buc_rows],
-    width=widths.tolist(),
+    width=[0.62] * len(buc_rows),
     marker=dict(color=bar_colors_8c, line=dict(color=BLACK, width=0.8)),
     text=[f"<b>{r[2]:.3f}</b>" for r in buc_rows], textposition="outside",
     textfont=dict(size=14, color=BLACK, weight=700),
@@ -839,12 +838,12 @@ fig8c = go.Figure(data=go.Bar(
 ))
 fig8c.update_layout(
     title=dict(text="<b>Test-PUL accuracy vs out-of-vocabulary token proportion (CountVec_cpu featurizer, seed-42 5-fold OOF)</b><br>"
-                    f"<span style='font-size:13px;color:black'>Point-biserial r(correct, OOV proportion) = {r_oov:.4f}, p = {p_oov:.2e}. Bar widths ∝ n PULs in each bucket.</span>",
+                    f"<span style='font-size:13px;color:black'>Point-biserial r(correct, OOV proportion) = {r_oov:.4f}, p = {p_oov:.2e}. Bars are uniform width; bucket size (% of test PULs) is annotated below each bar.</span>",
                x=0, font=PLOTLY_TITLE_FONT),
     xaxis=dict(title=dict(text="<b>Per-PUL out-of-vocabulary token proportion bucket</b>", font=PLOTLY_AXIS_FONT),
                tickmode="array",
                tickvals=[r[0] for r in buc_rows],
-               ticktext=[f"<b>{r[0]}</b><br>n={r[1]} · mean OOV={r[3]:.1f}%" for r in buc_rows],
+               ticktext=[f"<b>{r[0]}</b><br>n={r[1]} PULs ({100.0*r[1]/max(total_n_8c,1):.1f}%) · mean OOV={r[3]:.1f}%" for r in buc_rows],
                tickfont=dict(family="Helvetica, Arial, sans-serif", color=BLACK, size=11, weight=700),
                linecolor=BLACK),
     yaxis=dict(title=dict(text="<b>Test accuracy (fraction correct)</b>", font=PLOTLY_AXIS_FONT),

@@ -824,23 +824,25 @@ buc_df.to_csv(TAB/"tab_oov_vs_accuracy.csv", index=False)
 buc_df.to_csv(ROOT/"paper/tables/table13_oov_vs_accuracy.csv", index=False)
 
 fig, ax = plt.subplots(figsize=(13, 6.0))
-# Variable-width bars proportional to n_PULs
-widths = np.array([max(r[1], 1) for r in buc_rows], dtype=float)
-widths = 0.65 * widths / widths.max()
+# Uniform-width bars — bucket density is shown via the n= annotation under each bar
 x_pos = np.arange(len(buc_rows))
 colors_b = [SAGE if r[2] >= 0.9 else ORANGE if r[2] >= 0.7 else CRIMSON for r in buc_rows]
-bars = ax.bar(x_pos, [r[2] for r in buc_rows], width=widths, color=colors_b,
+bars = ax.bar(x_pos, [r[2] for r in buc_rows], width=0.62, color=colors_b,
               edgecolor="black", linewidth=0.7)
 ax.set_xticks(x_pos)
-ax.set_xticklabels([f"{r[0]}\nn={r[1]}\nmean OOV={r[3]:.1f}%" for r in buc_rows],
+ax.set_xticklabels([f"{r[0]}\nn={r[1]} PULs\nmean OOV={r[3]:.1f}%" for r in buc_rows],
                     fontsize=11, fontweight="bold", color=BLACK)
 ax.set_ylabel("Test accuracy (fraction correct)")
 ax.set_xlabel("Per-PUL out-of-vocabulary token proportion bucket")
 ax.set_ylim(0, 1.08)
-# value labels
+# value labels on each bar (accuracy + bucket-share %)
+total_n = sum(r[1] for r in buc_rows)
 for x, r in zip(x_pos, buc_rows):
+    pct = 100.0 * r[1] / max(total_n, 1)
     ax.text(x, r[2] + 0.02, f"{r[2]:.3f}",
             ha="center", fontsize=11, fontweight="bold", color=BLACK)
+    ax.text(x, 0.04, f"{pct:.1f}% of test PULs",
+            ha="center", fontsize=9, color="#555")
 ax.set_title("Test-PUL accuracy vs out-of-vocabulary token proportion (CountVec_cpu featurizer, seed-42 5-fold OOF)",
              loc="left", fontsize=13, fontweight="bold")
 from scipy.stats import pointbiserialr as _pbr
