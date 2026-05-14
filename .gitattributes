@@ -1,1 +1,2 @@
 artifacts/final_model.pkl filter=lfs diff=lfs merge=lfs -text
+artifacts/embeddings_cache/*/fasttext_*_model/*.vectors_ngrams.npy.xz filter=lfs diff=lfs merge=lfs -text

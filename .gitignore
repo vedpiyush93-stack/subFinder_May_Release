@@ -26,8 +26,14 @@
 # Those are only needed if you want to (a) re-train the embeddings from
 # scratch, or (b) use FastText's n-gram OOV resolution at inference time.
 # ---------------------------------------------------------------------------
+# Default-exclude the gensim *_model/ subdirs (the heavy ones).
 artifacts/embeddings_cache/*/*_model/
 artifacts/embeddings_cache/*/*_model
+# But ALLOW the small .model pickle + the xz-compressed .npy file inside.
+# Together those are sufficient for full FastText n-gram OOV inference.
+!artifacts/embeddings_cache/*/*_model/
+!artifacts/embeddings_cache/*/*_model/*.model
+!artifacts/embeddings_cache/*/*_model/*.npy.xz
 
 # ---------------------------------------------------------------------------
 # Python / build noise
