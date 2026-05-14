@@ -7,20 +7,14 @@
 # Comments must be on their own line — inline comments break gitignore patterns.
 
 # ---------------------------------------------------------------------------
-# Heavy artifacts — distributed via subfinder_final_model.zip
+# Calibration .npz/.json files — distributed in-repo, no ignore needed.
+# final_model.pkl is tracked via Git LFS (see .gitattributes); the pointer
+# file is committed, the 173 MB blob lives on LFS storage.
+# All 725 classifier.{joblib,keras} weights are committed directly:
+#   - largest single file is 45 MB (under GitHub's 50 MB warning threshold)
+#   - aggregate repo size ~8 GB (exceeds GitHub's 5 GB recommended cap; you
+#     will get an email warning but pushes still succeed)
 # ---------------------------------------------------------------------------
-# 176 MB (exceeds GitHub's 100 MB hard limit)
-artifacts/final_model.pkl
-# ~85 KB each, bundled with final_model.zip
-artifacts/calibration/*.npz
-artifacts/calibration/*.json
-
-# ---------------------------------------------------------------------------
-# Heavy classifier weights — distributed via subfinder_classifier_weights.zip
-# 25 × ~45 MB = ~1.1 GB for joblib, same again for keras
-# ---------------------------------------------------------------------------
-artifacts/predictions/*/r*_f*/classifier.joblib
-artifacts/predictions/*/r*_f*/classifier.keras
 
 # ---------------------------------------------------------------------------
 # Embedding cache — NOT shipped. ~255 GB raw. Reviewers regenerate locally via
