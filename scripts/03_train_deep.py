@@ -72,8 +72,11 @@ def _build_wv_for_arch(cache_dir, fold_key, arch):
             f"FastText DL model not at {rel_path}"
             + (f" or {Path(ft_full)/fold_key/sub/model_fn}" if ft_full else "")
             + ". Either pull from LFS or set FT_FULL_DIR.")
-    # Non-FastText: npz lookup is functionally identical to full model
+    # Non-FastText: npz lookup is functionally identical to full model.
+    # Compatible with both shipped npz schema ('vocab') and legacy ('keys').
     npz = np.load(cache_dir/fold_key/f"{arch}_dl.npz", allow_pickle=True)
+    vocab_field = "vocab" if "vocab" in npz.files else "keys"
+    keys = npz[vocab_field]; vecs = npz["vectors"]
     class _NpzWV:
         def __init__(self, keys, vecs):
             self.vector_size = vecs.shape[1] if vecs.shape[0] else 300
@@ -84,7 +87,7 @@ def _build_wv_for_arch(cache_dir, fold_key, arch):
             if i is None: raise KeyError(t)
             return self.vectors[i]
         def __contains__(self, t): return t in self._idx
-    return _NpzWV(npz["keys"], npz["vectors"])
+    return _NpzWV(keys, vecs)
 
 
 def _load_emb_seq(cache_dir, fold_key, arch, sentences, sentences_indices,

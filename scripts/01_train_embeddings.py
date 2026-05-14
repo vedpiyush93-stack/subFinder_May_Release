@@ -114,7 +114,12 @@ def main():
                         keys.append(int(i))
                         vecs.append(model.infer_vector(sentences_sup[i]))
                     vecs = np.stack(vecs)
+                # Write with field name 'vocab' (matches the shipped npz schema
+                # consumed by 02_train_shallow.py + 03_train_deep.py). The 'keys'
+                # alias is also written for backwards compat with anyone reading
+                # the older naming.
                 np.savez(out_dir/f"{arch}_{kind}.npz",
+                         vocab=np.array(keys, dtype=object),
                          keys=np.array(keys, dtype=object),
                          vectors=vecs,
                          train_indices=np.array(list(train_idx), dtype=np.int64))

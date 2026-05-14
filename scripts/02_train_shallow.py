@@ -51,8 +51,14 @@ def _load_emb_npz(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallo
     """Lightweight npz-only KeyedVectors shim — for W2V/D2V (no n-grams).
 
     For FastText we use _load_emb_ft (full model + n-gram fallback) instead.
+
+    Compatible with both the shipped npz schema (``vocab`` / ``vectors``) and
+    the legacy ``keys`` / ``vectors`` schema used by older versions of
+    ``01_train_embeddings.py``.
     """
     npz = np.load(cache_dir/fold_key/f"{arch}_{kind}.npz", allow_pickle=True)
+    vocab_field = "vocab" if "vocab" in npz.files else "keys"
+    keys = npz[vocab_field]; vecs = npz["vectors"]
     class _WV:
         def __init__(self, keys, vecs):
             self.vector_size = vecs.shape[1] if vecs.shape[0] else 300
@@ -63,7 +69,7 @@ def _load_emb_npz(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallo
             if i is None: raise KeyError(t)
             return self.vectors[i]
         def __contains__(self, t): return t in self._idx
-    return _WV(npz["keys"], npz["vectors"])
+    return _WV(keys, vecs)
 
 
 def _load_emb_ft(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
