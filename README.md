@@ -17,30 +17,27 @@
 
 ### 30-second mental model
 
-> **There is one model.** We call it `cpu__ET500_log2`. It was picked out of 29 candidates by the 5×5 RSKF benchmark, and then temperature-calibrated **using the same 5×5 protocol** — so the calibrated probabilities, the final deployed model, and the leave-one-token-out signature genes all describe the *same single fitted classifier*, just at different stages of the same pipeline.
+> **There is one model.** We call it `cpu__ET500_log2`. It was picked out of 29 candidates by the 5×5 RSKF benchmark, and then temperature-calibrated **using the same 5×5 protocol** — so the calibrated probabilities, the deployed model, and the leave-one-token-out signature genes all describe the *same single fitted classifier*, just at later stages of one pipeline.
 
-```
-            29 candidate configs                            ┐
-                    │   5×5 RSKF benchmark (725 fits)       │
-                    ▼                                       │
-   pick the winner → cpu__ET500_log2  (mean acc 0.9058)     │  same protocol,
-                    │                                       │  no leakage:
-                    │   same model, same 5×5 splits,        │  inner OOF on
-                    │   inner-5-fold OOF on each outer_tr   │  outer_tr only
-                    ▼                                       │
-   temperature scaling → calibrated cpu__ET500_log2  (T ≈ 0.70) ┘
-                    │
-                    ▼
-   artifacts/final_model.pkl  ← the deployed model
-                    │
-                    ▼
-   inference: predict_proba → / T → softmax → argmax       (returns calibrated probs)
-              │
-              └─> leave-one-token-out ablation runs on the CALIBRATED probs
-                  → the signature_genes you see in the inference output
-```
+The pipeline in four steps:
 
-Every probability the user (or the paper) sees comes from the calibrated model. The sig-gene Δ values are differences of calibrated probabilities (`P_cal(s | tokens) − P_cal(s | tokens \ {t})`), so signature genes always agree with the deployed inference call.
+1. **Pick the winner** — run 29 candidate configs through 5×5 RSKF (5 seeds × 5 folds = 725 fits). `cpu__ET500_log2` comes out on top at **0.9058 ± 0.0172** mean test accuracy.
+2. **Calibrate the winner** — take the *same* `cpu__ET500_log2`, fit one temperature scalar `T` per outer fold on inner-5-fold OOF probabilities of `outer_tr`. The outer-test fold is never used to fit `T`, so the leak-freedom of step 1 transfers automatically. Mean **T ≈ 0.70** across the 5 folds.
+3. **Deploy** — `artifacts/final_model.pkl` is exactly the calibrated `cpu__ET500_log2`: the same fitted pipeline plus the scalar `T`. Nothing else.
+4. **Predict on a new PUL** — `predict_proba → / T → softmax → argmax`. The probabilities you see in the inference output are the calibrated ones. The leave-one-token-out signature-gene Δ values are differences of those same calibrated probabilities (`P_cal(s | tokens) − P_cal(s | tokens \ {t})`), so the sig genes always describe what the deployed model is actually using.
+
+```mermaid
+flowchart TD
+    A[29 candidate configs] --> B["5×5 RSKF benchmark<br/>(725 fits, seeds 42–46)"]
+    B --> C["<b>winner: cpu__ET500_log2</b><br/>mean acc 0.9058 ± 0.0172"]
+    C --> D["temperature scaling<br/>(same 5×5 splits, inner-OOF on outer_tr only — leak-free)<br/>mean T ≈ 0.70"]
+    D --> E["<b>artifacts/final_model.pkl</b><br/>= calibrated cpu__ET500_log2"]
+    E --> F["inference on a new PUL<br/>predict_proba → ÷ T → softmax → argmax"]
+    F --> G["sig genes via leave-one-token-out ablation<br/>on the CALIBRATED probs<br/>Δ_s(t) = P_cal(s | tokens) − P_cal(s | tokens \ t)"]
+    style C fill:#d4edda,stroke:#155724
+    style E fill:#cce5ff,stroke:#004085
+    style G fill:#fff3cd,stroke:#856404
+```
 
 </div>
 
