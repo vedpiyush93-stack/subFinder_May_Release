@@ -11,7 +11,11 @@ genes via leave-one-token-out ablation against the predicted class (computed on
 the CALIBRATED probabilities — same protocol as the slides and paper §3.7).
 
 If the PUL has >10% out-of-vocabulary tokens, the predictor sets
-``refuse_to_predict=True`` and returns a degraded result (probabilities only).
+``refuse_to_predict=True`` purely as a "needs manual review" caveat — the
+inference itself runs identically (same substrate, same calibrated
+probabilities, same p-values, same signature genes). The flag and the
+``oov_proportion`` field are just two extra columns to help downstream
+tooling decide how much to trust the result.
 
 Examples:
     python scripts/06_inference.py --seq "GH13,CBM6|null"  --pretty

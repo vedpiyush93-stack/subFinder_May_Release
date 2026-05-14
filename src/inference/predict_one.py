@@ -17,8 +17,14 @@ and exposes a single ``predict(seq)`` method that returns a dict:
                               {"token": "PL17", "delta": +0.11, "is_lit_canonical": True},
                               ...],
       "oov_proportion":     0.0,     # fraction of PUL tokens NOT in train vocab
-      "refuse_to_predict":  False    # True if OOV > 0.10 (use OOD heuristic)
+      "refuse_to_predict":  False    # True iff oov_proportion > 0.10
     }
+
+The "refuse" flag is purely INFORMATIONAL — a "needs manual review" caveat.
+The inference pipeline runs identically regardless of OOV: substrate +
+calibrated probabilities + p-values + signature genes are always returned.
+The flag and ``oov_proportion`` are just two extra fields that downstream
+tooling can use to decide whether to trust the result.
 """
 from __future__ import annotations
 import json
@@ -70,19 +76,20 @@ class PULPredictor:
 
         # Signature genes via leave-one-token-out ablation against the PREDICTED class,
         # on the CALIBRATED probabilities (matches the deployment story).
+        # We run this regardless of OOV — the refuse flag is purely a caveat for the
+        # caller, never a gate on the inference itself.
         sig = []
-        if not refuse:
-            try:
-                deltas = ablate_pul_for_class(self.pipeline, seq, predicted,
-                                              top_k=top_k, apply_temp=self.T)
-                for tok, d in deltas:
-                    is_lit = (self.canon is not None
-                              and is_cazy(tok)
-                              and tok in self.canon.get(predicted, set()))
-                    sig.append({"token": tok, "delta": float(d),
-                                "is_lit_canonical": bool(is_lit)})
-            except Exception as e:  # be lenient — degraded mode still returns probs
-                sig = [{"error": str(e)}]
+        try:
+            deltas = ablate_pul_for_class(self.pipeline, seq, predicted,
+                                          top_k=top_k, apply_temp=self.T)
+            for tok, d in deltas:
+                is_lit = (self.canon is not None
+                          and is_cazy(tok)
+                          and tok in self.canon.get(predicted, set()))
+                sig.append({"token": tok, "delta": float(d),
+                            "is_lit_canonical": bool(is_lit)})
+        except Exception as e:
+            sig = [{"error": str(e)}]
 
         return {
             "predicted":         predicted,

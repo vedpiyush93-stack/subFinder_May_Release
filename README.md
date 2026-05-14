@@ -81,7 +81,7 @@ python3 scripts/06_inference.py --in-csv data/new_puls.csv --col sig_gene_seq --
 | `calibrated probs` | full probability vector after temperature scaling — these are well-calibrated (ECE ≈ 0.03) |
 | `top-5 sig genes` | the 5 tokens whose **removal** drops the predicted-class probability the most (leave-one-token-out Δ-prob) |
 | `OOV proportion` | fraction of your PUL's tokens that are **not in the training vocabulary** — see [What "unknown" means](#what-unknown-tokens-mean-the-oov-concept) |
-| `refuse_to_predict` | `True` if `OOV > 0.10` — the model is saying *"too much of this PUL is unfamiliar, my prediction is unreliable"* |
+| `refuse_to_predict` | **Purely informational — a "needs manual review" caveat.** `True` when `OOV > 0.10`. **The inference is identical regardless of this flag** — you still get the substrate, calibrated probabilities, p-values, *and* signature genes for every PUL. The flag and the `OOV proportion` are just two extra fields you can use to decide how much to trust the result. |
 
 ---
 
@@ -206,12 +206,12 @@ python3 scripts/04_benchmark.py
 
 The model's vocabulary is finite. It's built by `CountVectorizer(tokenizer=tok_cpu).fit(outer_train)` — **fit per fold on outer-train only**, so it's leak-free. For seed 42 the typical fold-vocab size is ~488 tokens.
 
-When you give the deployed model a new PUL, some of its tokens may not be in this vocabulary. Those are **OOV** ("out-of-vocabulary"). The inference output reports:
+When you give the deployed model a new PUL, some of its tokens may not be in this vocabulary. Those are **OOV** ("out-of-vocabulary"). The inference pipeline **does not change** based on OOV — every PUL goes through the same path and gets the same outputs (substrate, calibrated probabilities, p-values, signature genes). The inference output simply reports two extra fields:
 
 | Field | Meaning |
 |---|---|
 | `oov_proportion` | `(# OOV tokens) / (# total tokens in your PUL)` |
-| `refuse_to_predict` | `True` iff `oov_proportion > 0.10` |
+| `refuse_to_predict` | `True` iff `oov_proportion > 0.10` — **a "needs manual review" caveat, not a gate.** Treat the PUL like any other; just review the prediction before trusting it. |
 
 **Why this matters:** the deployed model is robust to *some* OOV, but accuracy collapses past 10 %. We confirmed this empirically on the seed‑42 OOF test set (1,030 PULs across 5 folds):
 
@@ -225,7 +225,7 @@ When you give the deployed model a new PUL, some of its tokens may not be in thi
 
 Point-biserial *r*(correct, OOV) = **−0.170**, *p* = 3.9 × 10⁻⁸.
 
-So: ~94 % of test PULs have ≤10 % OOV and the model is reliable on them (accuracy 0.91 – 1.00). Past 10 % OOV accuracy collapses to ~0.62 — which is exactly why `predict_one` flags `refuse_to_predict=True` when `oov_proportion > 0.10`. That's not a quality knob, it's a safety net: the prediction is still returned, but with the flag explicitly raised so downstream tooling can route those PULs differently.
+So: ~94 % of test PULs have ≤10 % OOV and the model is reliable on them (accuracy 0.91 – 1.00). Past 10 % OOV accuracy collapses to ~0.62 — which is exactly why `predict_one` raises `refuse_to_predict=True` when `oov_proportion > 0.10`. **The prediction is computed identically** — same substrate, same calibrated probabilities, same p-values, same signature genes — the flag is just an explicit caveat that downstream tooling (or a human reviewer) can use to triage which PULs deserve a closer look.
 
 **Per-prediction OOV figure:** [`docs/figures/fig8c_oov_vs_accuracy.png`](docs/figures/fig8c_oov_vs_accuracy.png) (also rendered on slide 12c of the decks).
 
