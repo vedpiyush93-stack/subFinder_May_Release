@@ -20,6 +20,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Auto-use the local .venv if present (GPU-enabled TF 2.18 + tensorflow-metal).
+if [ -x .venv/bin/python ]; then
+    PY=.venv/bin/python
+    echo "[retrain] using local .venv python: $($PY -c 'import sys; print(sys.executable)')"
+else
+    PY=python3
+    echo "[retrain] no local .venv — falling back to system python3 (may not have GPU)"
+fi
+
 # Point gensim loader at the source-of-truth uncompressed cache (no xz
 # decompress overhead × 100 folds). Set this to your own regenerated cache
 # if you don't have the author's machine layout.
@@ -54,22 +63,22 @@ phase() {
 
 # Phase 2 — JustAttn (~10 s/fold × 50 fits ≈ 8 min)
 phase "DL JustAttn (ftCbow + ftSg)" \
-    python3 scripts/03_train_deep.py --retrain --only \
+    $PY scripts/03_train_deep.py --retrain --only \
         ftCbow__JustAttn ftSg__JustAttn
 
 # Phase 3 — LSTM (~25 s/fold × 50 fits ≈ 21 min)
 phase "DL LSTM (ftCbow + ftSg)" \
-    python3 scripts/03_train_deep.py --retrain --only \
+    $PY scripts/03_train_deep.py --retrain --only \
         ftCbow__LSTM ftSg__LSTM
 
 # Phase 4 — LSTMattn (~25 s/fold × 50 fits ≈ 21 min)
 phase "DL LSTMattn (ftCbow + ftSg)" \
-    python3 scripts/03_train_deep.py --retrain --only \
+    $PY scripts/03_train_deep.py --retrain --only \
         ftCbow__LSTMattn ftSg__LSTMattn
 
 # Phase 5 — Trans (slowest: ~45 s/fold × 50 fits ≈ 38 min)
 phase "DL Trans (ftCbow + ftSg) — SLOWEST" \
-    python3 scripts/03_train_deep.py --retrain --only \
+    $PY scripts/03_train_deep.py --retrain --only \
         ftCbow__Trans ftSg__Trans
 
 echo

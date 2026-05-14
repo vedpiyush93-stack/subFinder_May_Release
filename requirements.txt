@@ -11,9 +11,17 @@ gensim>=4.3
 # Class-imbalance baseline (paper's BRF)
 imbalanced-learn>=0.11
 
-# Deep architectures (paper-verbatim)
+# Deep architectures (paper-verbatim). PIN tensorflow==2.18.0 because the
+# Apple-Silicon Metal plugin (tensorflow-metal==1.2.0) is only compatible with
+# this TF version. Newer TF builds load fine on CPU but fail to find the
+# Metal _pywrap_tensorflow_internal.so. If you don't need GPU, any TF>=2.15
+# will work for keras 3.
 keras>=3.0
-tensorflow>=2.15   # backend for keras 3 — torch / jax also work
+tensorflow==2.18.0   # CPU+Metal-compatible pin
+
+# Apple Silicon GPU acceleration — install ONLY on macOS arm64. On Linux/x86
+# pip will skip it automatically (no matching wheel).
+tensorflow-metal==1.2.0 ; platform_system == "Darwin" and platform_machine == "arm64"
 
 # Inference + paper artifacts
 pymupdf>=1.23      # PDF layout assertions in tests
