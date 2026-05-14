@@ -17,14 +17,17 @@
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Embedding cache — NOT shipped. ~255 GB raw. Reviewers regenerate locally via
-#   python3 scripts/01_train_embeddings.py --retrain    (~6 h on M4 Max)
-# Only needed for the 7 BRF+embedding shallow configs and the 20 DL configs.
-# The top model (cpu__ET500_log2) uses NO embeddings — headline results are
-# fully reproducible without this cache. See README §5 Tier B.
+# Embedding cache — the *.npz vector files SHIP IN-REPO (only ~446 MB total
+# for all 6 architectures × 2 regimes × 25 folds). Reviewers can retrain
+# downstream classifiers (the 20 DL configs and the 7 BRF+embedding shallow
+# variants) directly against the shipped vectors without regenerating.
+#
+# What we still DON'T ship: the gensim *_model/ subdirectories (~255 GB).
+# Those are only needed if you want to (a) re-train the embeddings from
+# scratch, or (b) use FastText's n-gram OOV resolution at inference time.
 # ---------------------------------------------------------------------------
-artifacts/embeddings_cache
-artifacts/embeddings_cache/
+artifacts/embeddings_cache/*/*_model/
+artifacts/embeddings_cache/*/*_model
 
 # ---------------------------------------------------------------------------
 # Python / build noise
