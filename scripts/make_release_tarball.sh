@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# Bundle heavy artifacts for distribution alongside a GitHub release.
+# DEPRECATED — kept for reference only. Reviewers no longer need separate
+# tarballs; all heavy artifacts now ship in the repo itself:
+#   * artifacts/final_model.pkl  → Git LFS, auto-fetched on git clone
+#   * artifacts/predictions/*/r*_f*/classifier.{joblib,keras} → regular git
+#   * artifacts/embeddings_cache/r*_f*/*.npz → regular git
+#   * artifacts/embeddings_cache/r*_f*/fasttext_*_model/*.npy.xz → Git LFS
+# A single ``git clone`` (with ``git lfs install`` set up once) gives the
+# reviewer everything below. This script is retained only as the canonical
+# recipe for regenerating the Drive-mirror tarballs if needed.
 #
 # Three separate tarballs (so reviewers can download only what they need):
 #

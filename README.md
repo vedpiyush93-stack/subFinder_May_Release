@@ -11,7 +11,7 @@
 [![Paper PDF](https://img.shields.io/badge/paper-PDF-1a3a5c?style=for-the-badge)](paper/main.pdf)
 [![Supplement](https://img.shields.io/badge/supplement-PDF-1a3a5c?style=for-the-badge)](paper/supplement.pdf)
 [![Static Deck](https://img.shields.io/badge/static%20deck-PPTX-7f8c8d?style=for-the-badge)](docs/deck.pptx)
-[![Drive Release](https://img.shields.io/badge/heavy%20artifacts-Drive-4285f4?style=for-the-badge)](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)
+[![Drive Mirror](https://img.shields.io/badge/Drive%20mirror-optional-grey?style=for-the-badge)](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)
 
 **Headline:** `cpu__ET500_log2` (CountVec_cpu × OvR ExtraTrees‑500) reaches **0.9058 ± 0.0172** mean test accuracy across 25 trials, beats the published Balanced Random Forest baseline by **+6.16 pp** (paired t = 15.50, p ≈ 5 × 10⁻¹⁴) and the strongest published deep architecture by **+8.10 pp**. The deployed model is temperature‑calibrated (T ≈ 0.70) with leak‑free inner‑CV fitting.
 
@@ -47,12 +47,12 @@ flowchart TD
 
 **Almost everything ships in the repo itself.** A single `git clone` gives you the **deployed model, all 725 per-trial classifier weights, the cached prediction probabilities, paper PDFs, decks, and tables.** You can immediately predict on a new PUL, regenerate every paper number, or run cross-fold ablations — **no extra download needed**.
 
-The **only** thing that doesn't fit is the **255 GB embedding cache**, which is only needed if you want to retrain the 20 deep configs or the 7 BRF+embedding shallow variants from scratch. The headline model (`cpu__ET500_log2`) uses NO embeddings, so the paper's claim is fully reproducible without it.
+The reduced inference-ready slice of the embedding cache (the per-token vector `.npz` tables for all 6 archs × 2 regimes × 25 folds + the xz-compressed FastText n-gram bucket tables for the 4 FastText flavors × 25 folds via Git LFS) **is already in the repo**. The full raw cache (~255 GB, including the Word2Vec/Doc2Vec gensim model pickles and the unsupervised training corpus) is **only** needed if you want to re-train the embeddings themselves from scratch — and even then, the headline model (`cpu__ET500_log2`) uses NO embeddings, so the paper's accuracy claim is fully reproducible without retraining any embeddings.
 
 | Tier | What you have | What you can do | Disk | Time |
 |:--:|---|---|---:|---:|
 | **0** | Just `git clone` — that's it | **Inference on new PULs**; recompute the paper's leaderboard + calibration + sig-gene metrics; ablations against all 29 configs × 25 trials; leak audit. | ~8 GB | clone time |
-| **1** | + regenerate the embedding cache locally (one command) | Retrain the 20 DL configs and the 7 BRF+embedding shallow variants from scratch. | + 255 GB | + 6–12 h on M4 Max |
+| **1** | + regenerate the FULL embedding cache locally (one command — `scripts/01_train_embeddings.py --retrain`) | **Re-train the embeddings themselves** from scratch (e.g. with a different unsupervised corpus). Not needed for retraining downstream classifiers — the shipped `.npz` + FastText n-gram weights cover that. | + 255 GB | + 6–12 h on M4 Max |
 
 > ⚠️ **Heads up on the clone size.** The repo is ~8 GB because we shipped all 725 classifier weights directly (each ≤45 MB, under GitHub's 50 MB per-file warning). The 173 MB deployed pickle ships via **Git LFS** — your `git clone` fetches it automatically as long as you have Git LFS installed (`brew install git-lfs && git lfs install`, then clone).
 >
@@ -152,7 +152,7 @@ python3 scripts/06_inference.py --in-csv data/new_puls.csv --col sig_gene_seq --
 ## Path B — Reproduce every paper number, no training
 
 **Audience:** you're reviewing the paper and want to verify every numeric claim.
-**Time:** ~10 minutes total. **No GPU. No model retraining. No Drive download needed for the headline numbers.**
+**Time:** ~10 minutes total. **No GPU. No model retraining. No downloads at all** — everything you need (deployed model, all 725 classifier weights, the embedding vectors, cached prediction probs) is already in the cloned repo (via regular git + LFS for the >100 MB pkl).
 
 The repo ships **2,675 lightweight prediction files** (`probs_*.npz` + `meta.json`, ~30 MB) for all **29 configs × 25 trials**. Every leaderboard / calibration / sig-gene number in the paper recomputes from these.
 
@@ -197,7 +197,7 @@ per_sub_sig_GT_scope_recall                             63.0%
 
 #### Optional: also verify the deployed (calibrated) model
 
-If you want to additionally run inference + confirm the calibration-audit lines, [download `subfinder_final_model.zip` from the Drive folder](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing) (48 MB), `unzip` in the repo root, then `python3 scripts/06_inference.py --seq "GH13,CBM6|null" --pretty`.
+The 173 MB `artifacts/final_model.pkl` is in the repo via Git LFS — your `git clone` already pulled it (provided you ran `git lfs install` once). To confirm the deployed inference: `python3 scripts/06_inference.py --seq "GH13,CBM6|null" --pretty`. You should see `predicted: alpha-glucan, confidence ≈ 0.83` for that input.
 
 ---
 
@@ -206,25 +206,18 @@ If you want to additionally run inference + confirm the calibration-audit lines,
 **Audience:** you want to retrain a config, run your own ablations, or modify the architecture.
 **Time:** 30 min – 12 h depending on what you retrain.
 
-Heavy artifacts ship via Drive (the GitHub 100 MB hard limit prevents shipping them in-repo):
+**Everything you need for ablations / retraining / leak audit is already in the cloned repo.** No separate downloads. The list below is just an inventory of what `git clone` (with LFS) actually gave you:
 
-| Drive file | Size | Needed for |
-|---|---|---|
-| [`subfinder_final_model.zip`](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing) | 48 MB | inference (Path A), calibration audit (Path B optional) |
-| [`subfinder_classifier_weights.zip`](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing) | 7.7 GB | leak audit, cross-fold ablation, comparing rep_1 vs. a fresh retrain |
+| What's in the repo | Where | Storage method | Size |
+|---|---|---|---|
+| Deployed calibrated model | `artifacts/final_model.pkl` | **Git LFS** (auto-fetched on `git clone`) | 173 MB |
+| All 725 per-trial classifier weights (29 configs × 25 trials) | `artifacts/predictions/<config>/r*_f*/classifier.{joblib,keras}` | regular git | 8.3 GB |
+| All embedding vector tables (`vocab + vectors`) for all 6 archs × 2 regimes × 25 folds | `artifacts/embeddings_cache/r*_f*/<arch>_<regime>.npz` | regular git | 446 MB |
+| FastText n-gram bucket tables (for n-gram OOV inference) | `artifacts/embeddings_cache/r*_f*/fasttext_*_model/*.npy.xz` | **Git LFS** (xz-compressed, ~1.86 GB each) | ~190 GB across all 4 FT flavors × 25 folds |
+| Cached prediction probs + meta for every trial | `artifacts/predictions/<config>/r*_f*/{probs_test.npz, probs_train.npz, meta.json}` | regular git | ~30 MB |
+| Per-fold calibration outputs + audit | `artifacts/calibration/`, `artifacts/calibration_report.csv`, `paper/audit_output.txt` | regular git | ~150 KB |
 
-```bash
-# Download both zips from the Drive folder into the repo root, then:
-unzip -q subfinder_final_model.zip            # → artifacts/final_model.pkl + calibration/*.npz
-unzip -q subfinder_classifier_weights.zip     # → artifacts/predictions/*/r*_f*/classifier.{joblib,keras}
-```
-
-Verify SHA-256 before unzipping (paranoid mode):
-
-```text
-subfinder_final_model.zip         654a5ad1e2c613f0df96f365e52f9ec3f38039ff7dd4ca93fb5f75a5a6cf96d5
-subfinder_classifier_weights.zip  3784f21cb4317bb61e56bbe349b7db1cea2da8e1859c5daf36a189dee1aabc16
-```
+> 📦 **The Drive folder still exists as an optional mirror** of the heavy artifacts ([link](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)) — only useful if you can't use Git LFS for some reason, or want a frozen `.zip` snapshot. **Default reviewers can ignore it.**
 
 ### Path C.1 — Run the leakage audit (5 s)
 
@@ -246,7 +239,7 @@ python3 scripts/04_benchmark.py          # confirm leaderboard regenerates the s
 
 ### Path C.3 — Retrain the embedding-using configs (~12 h on M4 Max)
 
-The 7 BRF+embedding shallow configs and the 20 DL configs need per-fold gensim word embeddings. We **don't ship** these — the raw cache is ~255 GB and barely compresses. Regenerate locally:
+If you want to **rebuild the embeddings themselves from scratch** (not just retrain the downstream classifiers — for that, the shipped `.npz` is sufficient), you need the full raw gensim model + unsupervised-corpus state. That's ~255 GB and isn't shipped. Regenerate locally:
 
 ```bash
 # (~6 h) — trains 6 architectures × 25 folds × 2 corpora (shallow vs. DL)
@@ -263,6 +256,26 @@ python3 scripts/04_benchmark.py
 ```
 
 **Why two embedding flavors per fold (`*_shallow.npz` and `*_dl.npz`):** shallow configs see all 824 outer-train rows; DL configs reserve 206 inner-val rows for EarlyStopping. Re-fitting one embedding for both would leak val rows into the DL training corpus. The leak audit (Path C.1) checks this.
+
+### Path C.4 — Use FastText n-gram OOV for non-deployed configs
+
+The non-deployed FastText configs (`ftCbow_MM__ET500_sqrt`, `ftSg__LSTMattn`, etc.) can resolve OOV tokens via character-n-gram fallback. The required ngram bucket tables ship as xz-compressed `.npy.xz` files via Git LFS — your `git clone` already has them at `artifacts/embeddings_cache/r*_f*/fasttext_*_model/`.
+
+To use them, load via the wrapper in [`src/embeddings/loader.py`](src/embeddings/loader.py) instead of `gensim.models.FastText.load()`:
+
+```python
+from src.embeddings.loader import load_fasttext
+
+m = load_fasttext("artifacts/embeddings_cache/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model")
+# wrapper auto-decompresses the .npy.xz sibling on first load (~6 s)
+
+v_known = m.wv["GT2"]            # in-vocab → standard trained vector
+v_oov   = m.wv["GH13_99_NEW"]    # OOV → n-gram-resolved vector (NOT zero)
+```
+
+The decompressed `.npy` is cached next to the `.xz`, so subsequent loads skip the decompress step. Vectors are **bit-identical to the source uncompressed model** — proven by [`tests/verify_reduced_embedding_files.py`](tests/verify_reduced_embedding_files.py) (run `pytest -q tests/verify_reduced_embedding_files.py`).
+
+**Word2Vec / Doc2Vec note:** those architectures don't have n-gram OOV (it's a FastText-specific feature). For W2V/D2V configs, the `.npz` we ship is functionally identical to the full gensim model dir — same vector tables, same OOV behavior (zero vector). Verified bit-identical across the full training corpus and a 100-PUL OOV stress test.
 
 ---
 
@@ -419,9 +432,9 @@ subFinder_May_Release/
 │   ├── ablation/            leave-one-token-out Δ-prob (argmax + TRUE class, raw + calibrated)      [shipped]
 │   ├── leaderboard.csv      29-row sorted leaderboard                                               [shipped]
 │   ├── per_fold_metrics.csv full 725-row per-trial metrics CSV                                     [shipped]
-│   ├── final_model.pkl      ← in Drive zip (subfinder_final_model.zip)                              [NOT in git]
-│   ├── predictions/*/r*_f*/classifier.{joblib,keras}  ← in Drive zip (classifier_weights.zip)       [NOT in git]
-│   └── embeddings_cache/    ← regenerate locally via scripts/01 (~255 GB, only for non-top configs) [NOT in git]
+│   ├── final_model.pkl      [shipped via Git LFS — auto-fetched on git clone]
+│   ├── predictions/*/r*_f*/classifier.{joblib,keras}  [725 files, ~8.3 GB regular git]
+│   └── embeddings_cache/    [shipped reduced slice in git: .npz vectors + xz-compressed FastText ngram tables (LFS); full 255 GB raw cache regenerable via scripts/01 only if you want to RE-TRAIN embeddings]
 ├── paper/                   compiled paper + supplement + audit_output.txt + 12 source tables
 ├── docs/                    deck.pptx + deck.html + figures/ + tables/
 ├── presentations/           build_README.md + symlinked deck.pptx (mirror of docs/)

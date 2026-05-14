@@ -5,16 +5,27 @@ Each fold gets its own embedding training corpus to keep test tokens out of
 the embedding space (the leakage we fixed vs. the paper's pre-trained models).
 
 Usage:
-    python scripts/01_train_embeddings.py --reuse-cache    # default: load from artifacts/embeddings_cache
+    python scripts/01_train_embeddings.py --reuse-cache    # default: load from artifacts/embeddings_cache (already shipped in repo)
     python scripts/01_train_embeddings.py --retrain        # retrain from scratch into artifacts/embeddings_cache (~6h)
     python scripts/01_train_embeddings.py --retrain --only-archs fasttext_cbow fasttext_sg
     python scripts/01_train_embeddings.py --unsupervised-csv data/unsupervised.csv  # use external corpus
 
-The 'cache' is the same fold_cache_v2/ layout as the original benchmark, with one
-gensim model per (seed, fold, architecture). For the recommended reproduce-paper
-flow, just symlink (or download + extract) the existing cache and pass --reuse-cache.
+Cache state in this repo
+------------------------
+The cache is the same fold_cache_v2/ layout as the original benchmark, with one
+gensim model per (seed, fold, architecture). After a fresh ``git clone`` you
+already have the reduced subset needed for downstream training and inference:
 
-See README.md §5 for the download link to the pre-trained cache.
+    * ``r*_f*/<arch>_<regime>.npz``               — vector lookup tables (regular git, ~446 MB)
+    * ``r*_f*/fasttext_*_model/{*.model, *.npy.xz}`` — n-gram-OOV-ready FastText
+      gensim model dirs (xz-compressed via Git LFS; ``src/embeddings/loader.py``
+      auto-decompresses on first load)
+
+The Word2Vec / Doc2Vec full model dirs are NOT shipped — those architectures
+don't have n-gram OOV, so their ``.npz`` is functionally bit-identical to the
+full model dir for any inference. Use ``--retrain`` only when you want to
+rebuild the embeddings themselves from scratch (e.g. with a different
+unsupervised corpus).
 """
 from __future__ import annotations
 import argparse, sys, time

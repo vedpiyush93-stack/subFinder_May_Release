@@ -29,7 +29,8 @@ Each run = one full ``05_calibrate_best.py``. ~4 min on M4 Max.
 
 Heads up — this script overwrites ``artifacts/final_model.pkl`` on every
 call (that's what ``05_calibrate_best.py`` does). If you want to preserve
-the canonical pkl, back it up first or restore from the Drive zip after.
+the canonical pkl, back it up first or restore via ``git checkout artifacts/final_model.pkl``
+(LFS smudge will re-pull the canonical T=0.6678 version from origin).
 """
 from __future__ import annotations
 import argparse, re, subprocess, sys, time
