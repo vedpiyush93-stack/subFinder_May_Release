@@ -159,6 +159,10 @@ def main():
             emb_arch, dl_arch = DL_CONFIGS[cfg]
             out = out_dir/cfg/fold_key
             out.mkdir(parents=True, exist_ok=True)
+            # Resume-friendly: skip trials that already have meta.json
+            if (out/"meta.json").exists():
+                print(f"[03-deep] {fold_key} {cfg}: SKIP (meta.json exists)", flush=True)
+                continue
             t0 = time.time()
             try:
                 # Materialize features ONLY for the rows we'll touch in this fold.

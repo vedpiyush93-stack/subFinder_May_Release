@@ -159,6 +159,11 @@ def main():
             spec = SHALLOW_CONFIGS[cfg]
             out = out_dir/cfg/fold_key
             out.mkdir(parents=True, exist_ok=True)
+            # Resume-friendly: skip trials that already have meta.json
+            # (the marker the trial wrote at the very end).
+            if (out/"meta.json").exists():
+                print(f"[02-shallow] {fold_key} {cfg}: SKIP (meta.json exists)", flush=True)
+                continue
             t_t = time.time()
             feat = _build_featurizer(spec["featurizer"], fold_key, cache_dir)
             # For sparse-CountVec we fit + transform via Pipeline; for dense embedding featurizers
