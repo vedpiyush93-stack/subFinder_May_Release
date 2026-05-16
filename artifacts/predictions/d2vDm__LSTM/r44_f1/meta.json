@@ -1,18 +1,9 @@
 {
   "shorthand": "d2vDm__LSTM",
-  "family": "paper_DL",
-  "role": "dl",
   "seed": 44,
   "fold": 1,
-  "wall_sec": 14.135340929031372,
-  "n_train": 824,
+  "test_acc": 0.6893203883495146,
+  "wall_sec": 10.188853979110718,
   "n_test": 206,
-  "test_acc": 0.6359223300970874,
-  "test_f1_macro": 0.4409766214295257,
-  "test_classwise": 0.4856574529271898,
-  "train_acc": 0.7257281553398058,
-  "train_f1_macro": 0.47919522657126495,
-  "n_epochs": 236,
-  "arch": "vanilla_lstm",
-  "emb": "doc2vec_dm"
+  "n_train": 824
 }

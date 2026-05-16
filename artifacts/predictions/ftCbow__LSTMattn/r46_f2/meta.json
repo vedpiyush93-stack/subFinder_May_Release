@@ -1,18 +1,9 @@
 {
   "shorthand": "ftCbow__LSTMattn",
-  "family": "paper_DL",
-  "role": "dl",
   "seed": 46,
   "fold": 2,
-  "wall_sec": 13.574808835983276,
-  "n_train": 824,
+  "test_acc": 0.7864077669902912,
+  "wall_sec": 9.437123775482178,
   "n_test": 206,
-  "test_acc": 0.8640776699029126,
-  "test_f1_macro": 0.8308992239444394,
-  "test_classwise": 0.8281490585437953,
-  "train_acc": 0.9393203883495146,
-  "train_f1_macro": 0.9275841189453704,
-  "n_epochs": 195,
-  "arch": "lstm_with_attention",
-  "emb": "fasttext_cbow"
+  "n_train": 824
 }

@@ -1,18 +1,9 @@
 {
   "shorthand": "d2vDm__JustAttn",
-  "family": "paper_DL",
-  "role": "dl",
   "seed": 46,
   "fold": 2,
-  "wall_sec": 19.40751624107361,
-  "n_train": 824,
+  "test_acc": 0.7233009708737864,
+  "wall_sec": 11.078289031982422,
   "n_test": 206,
-  "test_acc": 0.7572815533980582,
-  "test_f1_macro": 0.710775761844359,
-  "test_classwise": 0.7028954196388407,
-  "train_acc": 0.7936893203883495,
-  "train_f1_macro": 0.7640244670804975,
-  "n_epochs": 313,
-  "arch": "just_attention",
-  "emb": "doc2vec_dm"
+  "n_train": 824
 }

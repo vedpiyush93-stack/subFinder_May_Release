@@ -1,18 +1,9 @@
 {
   "shorthand": "w2vCbow__LSTMattn",
-  "family": "paper_DL",
-  "role": "dl",
   "seed": 46,
   "fold": 4,
-  "wall_sec": 13.033385038375854,
-  "n_train": 824,
+  "test_acc": 0.7766990291262136,
+  "wall_sec": 10.484951972961426,
   "n_test": 206,
-  "test_acc": 0.8349514563106796,
-  "test_f1_macro": 0.8203195646945646,
-  "test_classwise": 0.8104449023199023,
-  "train_acc": 0.9089805825242718,
-  "train_f1_macro": 0.8959353441717876,
-  "n_epochs": 158,
-  "arch": "lstm_with_attention",
-  "emb": "word2vec_cbow"
+  "n_train": 824
 }

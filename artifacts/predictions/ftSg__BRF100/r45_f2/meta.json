@@ -2,8 +2,8 @@
   "shorthand": "ftSg__BRF100",
   "seed": 45,
   "fold": 2,
-  "test_acc": 0.8009708737864077,
-  "wall_sec": 2.31148099899292,
+  "test_acc": 0.8058252427184466,
+  "wall_sec": 57.96702718734741,
   "n_test": 206,
   "n_train": 824
 }

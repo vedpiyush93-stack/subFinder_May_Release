@@ -2,8 +2,8 @@
   "shorthand": "ftCbow__BRF100",
   "seed": 46,
   "fold": 2,
-  "test_acc": 0.8203883495145631,
-  "wall_sec": 2.0815649032592773,
+  "test_acc": 0.8155339805825242,
+  "wall_sec": 1.797179937362671,
   "n_test": 206,
   "n_train": 824
 }

@@ -1,18 +1,9 @@
 {
   "shorthand": "d2vDm__Trans",
-  "family": "paper_DL",
-  "role": "dl",
   "seed": 46,
   "fold": 1,
-  "wall_sec": 104.17583990097046,
-  "n_train": 824,
+  "test_acc": 0.7766990291262136,
+  "wall_sec": 31.671955823898315,
   "n_test": 206,
-  "test_acc": 0.8106796116504854,
-  "test_f1_macro": 0.7700899336497361,
-  "test_classwise": 0.7912628928089452,
-  "train_acc": 0.883495145631068,
-  "train_f1_macro": 0.850439661825445,
-  "n_epochs": 77,
-  "arch": "transformer",
-  "emb": "doc2vec_dm"
+  "n_train": 824
 }

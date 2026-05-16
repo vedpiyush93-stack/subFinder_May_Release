@@ -2,8 +2,8 @@
   "shorthand": "ftCbow_MM__ET500_sqrt",
   "seed": 44,
   "fold": 3,
-  "test_acc": 0.8737864077669902,
-  "wall_sec": 5.975347995758057,
+  "test_acc": 0.883495145631068,
+  "wall_sec": 60.194138050079346,
   "n_test": 206,
   "n_train": 824
 }

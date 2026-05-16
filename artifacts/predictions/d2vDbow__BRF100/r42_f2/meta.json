@@ -1,18 +1,9 @@
 {
   "shorthand": "d2vDbow__BRF100",
-  "family": "paper_shallow",
-  "role": "shallow",
   "seed": 42,
   "fold": 2,
-  "wall_sec": 1.8967061042785645,
-  "n_train": 824,
+  "test_acc": 0.7864077669902912,
+  "wall_sec": 1.6588671207427979,
   "n_test": 206,
-  "test_acc": 0.7718446601941747,
-  "test_f1_macro": 0.7512270002824702,
-  "test_classwise": 0.7682864211811581,
-  "train_acc": 0.9890776699029126,
-  "train_f1_macro": 0.9875001523205942,
-  "n_epochs": null,
-  "arch": null,
-  "emb": null
+  "n_train": 824
 }

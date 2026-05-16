@@ -1,18 +1,9 @@
 {
   "shorthand": "ftSg__LSTM",
-  "family": "paper_DL",
-  "role": "dl",
   "seed": 45,
   "fold": 3,
-  "wall_sec": 17.320677757263184,
-  "n_train": 824,
+  "test_acc": 0.8203883495145631,
+  "wall_sec": 73.54329705238342,
   "n_test": 206,
-  "test_acc": 0.6650485436893204,
-  "test_f1_macro": 0.4590875416084253,
-  "test_classwise": 0.5171817765567767,
-  "train_acc": 0.6529126213592233,
-  "train_f1_macro": 0.4331099309237618,
-  "n_epochs": 284,
-  "arch": "vanilla_lstm",
-  "emb": "fasttext_sg"
+  "n_train": 824
 }
