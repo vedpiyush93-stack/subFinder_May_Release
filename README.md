@@ -13,7 +13,7 @@
 [![Static Deck](https://img.shields.io/badge/static%20deck-PPTX-7f8c8d?style=for-the-badge)](docs/deck.pptx)
 [![Drive Mirror](https://img.shields.io/badge/Drive%20mirror-optional-grey?style=for-the-badge)](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)
 
-**Headline (2-rep ensemble across model-init seeds, all paper baselines source-faithful):** `cpu__ET500_log2` (CountVec_cpu × OvR ExtraTrees‑500) reaches **0.9060 ± 0.0169** mean test accuracy across 25 trials × 2 reps, beats the published Balanced Random Forest baseline by **+6.08 pp** and the strongest published deep architecture (`ftSg__JustAttn`, paper-faithful arch) by **+10.45 pp**. The deployed model is temperature‑calibrated (T ≈ 0.70) with leak‑free inner‑CV fitting. Full 5-rep weighted ensemble + cross-rep stability stats land when reps 3-5 finish.
+**Headline (rep_1 = canonical benchmark, 3 of 5 reproducibility reps complete):** `cpu__ET500_log2` (CountVec_cpu × OvR ExtraTrees‑500) reaches **0.9066 ± 0.0174** mean test accuracy on rep_1, with **cross-rep mean 0.9066 ± 0.0002** (std across 3 reps = 4th-decimal stable — the deployed config is essentially deterministic to model-init seed). Beats the published Balanced Random Forest baseline by **+6.64 pp** and the strongest published deep architecture by **+11.83 pp** (both baselines now paper-faithful: source-verbatim DL architectures + imblearn BRF defaults). Temperature‑calibrated (mean T ≈ 0.70) with leak‑free inner‑CV fitting. Cross-rep ranking-stability: top-7 configs hold rank 1-7 in EVERY rep. rep_4 + rep_5 still training; final weighted-ensemble + complete variance stats land once all 5 reps finish (~5h ETA).
 
 > 📌 **What changed in the 2026-05-15 refresh:** (1) All 4 DL architectures (`LSTM`, `LSTMattn`, `JustAttn`, `Trans`) and the `BRF100` shallow baseline were aligned **apples-to-apples** with the source paper (LayerNorm placement, optimizer LR, hidden units, Bahdanau attention, BRF defaults), with two intentional deviations kept: (a) batch sizes bumped for M4 Max throughput, (b) FastText n-gram OOV via `load_fasttext()` (the source baseline didn't do this). (2) Fixed a val-leak: `train_dl`'s EarlyStopping val split is now locked to `random_state=42` to match the rows the embedding excluded — no DL config sees its val rows during embedding training anymore. (3) The 5×5 RSKF benchmark is now repeated **5×** with different model-init seeds for reproducibility variance (`reproducibility/rep_1..5/`). Numbers in this README + paper reflect the **2-rep ensemble** so far (rep_1 + rep_2); full 5-rep ensemble lands when reps 3-5 finish. See [reproducibility/MORNING_PLAN.md](reproducibility/MORNING_PLAN.md) for the workflow.
 
@@ -23,7 +23,7 @@
 
 The pipeline in four steps:
 
-1. **Pick the winner** — run 29 candidate configs through 5×5 RSKF (5 seeds × 5 folds = 725 fits, repeated 2-5× with different model-init seeds for reproducibility variance). `cpu__ET500_log2` comes out on top at **0.9060 ± 0.0169** mean test accuracy (2-rep ensemble; rank-1 in every rep).
+1. **Pick the winner** — run 29 candidate configs through 5×5 RSKF (5 seeds × 5 folds = 725 fits per rep, repeated 5 reps with different model-init seeds for reproducibility variance). `cpu__ET500_log2` comes out on top at **0.9066 ± 0.0174** (rep_1 canonical); across 3 reps mean **0.9066 ± 0.0002** — rank-1 in every rep, top-7 ordering identical across reps.
 2. **Calibrate the winner** — take the *same* `cpu__ET500_log2`, fit one temperature scalar `T` per outer fold on inner-5-fold OOF probabilities of `outer_tr`. The outer-test fold is never used to fit `T`, so the leak-freedom of step 1 transfers automatically. Mean **T ≈ 0.70** across the 5 folds.
 3. **Deploy** — `artifacts/final_model.pkl` is exactly the calibrated `cpu__ET500_log2`: the same fitted pipeline plus the scalar `T`. Nothing else.
 4. **Predict on a new PUL** — `predict_proba → / T → softmax → argmax`. The probabilities you see in the inference output are the calibrated ones. The leave-one-token-out signature-gene Δ values are differences of those same calibrated probabilities (`P_cal(s | tokens) − P_cal(s | tokens \ {t})`), so the sig genes always describe what the deployed model is actually using.
@@ -31,7 +31,7 @@ The pipeline in four steps:
 ```mermaid
 flowchart TD
     A[29 candidate configs] --> B["5×5 RSKF benchmark<br/>(725 fits, seeds 42–46)"]
-    B --> C["<b>winner: cpu__ET500_log2</b><br/>mean acc 0.9060 ± 0.0169<br/>(2-rep ensemble, rank-1 in every rep)"]
+    B --> C["<b>winner: cpu__ET500_log2</b><br/>mean acc 0.9066 ± 0.0174 (rep_1)<br/>cross-rep mean 0.9066 ± 0.0002 (3 reps so far)<br/>rank-1 in every rep, top-7 ordering stable"]
     C --> D["temperature scaling<br/>(same 5×5 splits, inner-OOF on outer_tr only — leak-free)<br/>mean T ≈ 0.70"]
     D --> E["<b>artifacts/final_model.pkl</b><br/>= calibrated cpu__ET500_log2"]
     E --> F["inference on a new PUL<br/>predict_proba → ÷ T → softmax → argmax"]
@@ -212,11 +212,11 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/build_paper_artifa
 After step 4, every `\textbf{...}` claim in [`paper/main.pdf`](paper/main.pdf) / [`paper/supplement.pdf`](paper/supplement.pdf) corresponds to one stable key in `paper/audit_output.txt`:
 
 ```
-top1_acc                                                0.9060
-top1_acc_std                                            0.0169
+top1_acc                                                0.9066
+top1_acc_std                                            0.0174
 top1_n                                                  25
-gap_ours_vs_paper_baseline                              0.0608
-gap_ours_vs_best_paper_dl                               0.1045
+gap_ours_vs_paper_baseline                              0.0664
+gap_ours_vs_best_paper_dl                               0.1183
 mean_T                                                  0.6996
 lit_db_substrate_family_pairs_after_alias_collapse      394
 per_sub_sig_GT_total_hit_at_K                           768
