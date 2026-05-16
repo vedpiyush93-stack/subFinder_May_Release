@@ -13,7 +13,9 @@
 [![Static Deck](https://img.shields.io/badge/static%20deck-PPTX-7f8c8d?style=for-the-badge)](docs/deck.pptx)
 [![Drive Mirror](https://img.shields.io/badge/Drive%20mirror-optional-grey?style=for-the-badge)](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)
 
-**Headline:** `cpu__ET500_log2` (CountVec_cpu × OvR ExtraTrees‑500) reaches **0.9058 ± 0.0172** mean test accuracy across 25 trials, beats the published Balanced Random Forest baseline by **+6.16 pp** (paired t = 15.50, p ≈ 5 × 10⁻¹⁴) and the strongest published deep architecture by **+8.10 pp**. The deployed model is temperature‑calibrated (T ≈ 0.70) with leak‑free inner‑CV fitting.
+**Headline (2-rep ensemble across model-init seeds, all paper baselines source-faithful):** `cpu__ET500_log2` (CountVec_cpu × OvR ExtraTrees‑500) reaches **0.9060 ± 0.0169** mean test accuracy across 25 trials × 2 reps, beats the published Balanced Random Forest baseline by **+6.08 pp** and the strongest published deep architecture (`ftSg__JustAttn`, paper-faithful arch) by **+10.45 pp**. The deployed model is temperature‑calibrated (T ≈ 0.70) with leak‑free inner‑CV fitting. Full 5-rep weighted ensemble + cross-rep stability stats land when reps 3-5 finish.
+
+> 📌 **What changed in the 2026-05-15 refresh:** (1) All 4 DL architectures (`LSTM`, `LSTMattn`, `JustAttn`, `Trans`) and the `BRF100` shallow baseline were aligned **apples-to-apples** with the source paper (LayerNorm placement, optimizer LR, hidden units, Bahdanau attention, BRF defaults), with two intentional deviations kept: (a) batch sizes bumped for M4 Max throughput, (b) FastText n-gram OOV via `load_fasttext()` (the source baseline didn't do this). (2) Fixed a val-leak: `train_dl`'s EarlyStopping val split is now locked to `random_state=42` to match the rows the embedding excluded — no DL config sees its val rows during embedding training anymore. (3) The 5×5 RSKF benchmark is now repeated **5×** with different model-init seeds for reproducibility variance (`reproducibility/rep_1..5/`). Numbers in this README + paper reflect the **2-rep ensemble** so far (rep_1 + rep_2); full 5-rep ensemble lands when reps 3-5 finish. See [reproducibility/MORNING_PLAN.md](reproducibility/MORNING_PLAN.md) for the workflow.
 
 ### 30-second mental model
 
@@ -21,7 +23,7 @@
 
 The pipeline in four steps:
 
-1. **Pick the winner** — run 29 candidate configs through 5×5 RSKF (5 seeds × 5 folds = 725 fits). `cpu__ET500_log2` comes out on top at **0.9058 ± 0.0172** mean test accuracy.
+1. **Pick the winner** — run 29 candidate configs through 5×5 RSKF (5 seeds × 5 folds = 725 fits, repeated 2-5× with different model-init seeds for reproducibility variance). `cpu__ET500_log2` comes out on top at **0.9060 ± 0.0169** mean test accuracy (2-rep ensemble; rank-1 in every rep).
 2. **Calibrate the winner** — take the *same* `cpu__ET500_log2`, fit one temperature scalar `T` per outer fold on inner-5-fold OOF probabilities of `outer_tr`. The outer-test fold is never used to fit `T`, so the leak-freedom of step 1 transfers automatically. Mean **T ≈ 0.70** across the 5 folds.
 3. **Deploy** — `artifacts/final_model.pkl` is exactly the calibrated `cpu__ET500_log2`: the same fitted pipeline plus the scalar `T`. Nothing else.
 4. **Predict on a new PUL** — `predict_proba → / T → softmax → argmax`. The probabilities you see in the inference output are the calibrated ones. The leave-one-token-out signature-gene Δ values are differences of those same calibrated probabilities (`P_cal(s | tokens) − P_cal(s | tokens \ {t})`), so the sig genes always describe what the deployed model is actually using.
@@ -29,7 +31,7 @@ The pipeline in four steps:
 ```mermaid
 flowchart TD
     A[29 candidate configs] --> B["5×5 RSKF benchmark<br/>(725 fits, seeds 42–46)"]
-    B --> C["<b>winner: cpu__ET500_log2</b><br/>mean acc 0.9058 ± 0.0172"]
+    B --> C["<b>winner: cpu__ET500_log2</b><br/>mean acc 0.9060 ± 0.0169<br/>(2-rep ensemble, rank-1 in every rep)"]
     C --> D["temperature scaling<br/>(same 5×5 splits, inner-OOF on outer_tr only — leak-free)<br/>mean T ≈ 0.70"]
     D --> E["<b>artifacts/final_model.pkl</b><br/>= calibrated cpu__ET500_log2"]
     E --> F["inference on a new PUL<br/>predict_proba → ÷ T → softmax → argmax"]
@@ -45,18 +47,46 @@ flowchart TD
 
 ## What's in the repo (and what isn't)
 
-**Almost everything ships in the repo itself.** A single `git clone` gives you the **deployed model, all 725 per-trial classifier weights, the cached prediction probabilities, paper PDFs, decks, and tables.** You can immediately predict on a new PUL, regenerate every paper number, or run cross-fold ablations — **no extra download needed**.
+**Almost everything ships in the repo itself.** A single `git clone` (with **Git LFS installed**) gives you the **deployed model, all 725 per-trial classifier weights, the cached prediction probabilities, FastText n-gram OOV tables for all 25 folds × 4 FT flavors, paper PDFs, decks, and tables.** You can immediately predict on a new PUL, regenerate every paper number, or run cross-fold ablations — **no extra download needed**.
 
-The reduced inference-ready slice of the embedding cache (the per-token vector `.npz` tables for all 6 archs × 2 regimes × 25 folds + the xz-compressed FastText n-gram bucket tables for the 4 FastText flavors × 25 folds via Git LFS) **is already in the repo**. The full raw cache (~255 GB, including the Word2Vec/Doc2Vec gensim model pickles and the unsupervised training corpus) is **only** needed if you want to re-train the embeddings themselves from scratch — and even then, the headline model (`cpu__ET500_log2`) uses NO embeddings, so the paper's accuracy claim is fully reproducible without retraining any embeddings.
+> 🚨 **YOU MUST USE `git clone` WITH GIT LFS — not a plain `git clone`.** The plain clone gives you LFS *pointer files* (135-byte text stubs) instead of the actual model + ngram blobs. See "How to clone properly" below.
 
-| Tier | What you have | What you can do | Disk | Time |
+| Tier | What you have | What you can do | Disk after `git lfs pull` | Time |
 |:--:|---|---|---:|---:|
-| **0** | Just `git clone` — that's it | **Inference on new PULs**; recompute the paper's leaderboard + calibration + sig-gene metrics; ablations against all 29 configs × 25 trials; leak audit. | ~8 GB | clone time |
-| **1** | + regenerate the FULL embedding cache locally (one command — `scripts/01_train_embeddings.py --retrain`) | **Re-train the embeddings themselves** from scratch (e.g. with a different unsupervised corpus). Not needed for retraining downstream classifiers — the shipped `.npz` + FastText n-gram weights cover that. | + 255 GB | + 6–12 h on M4 Max |
+| **0** | `git clone` + `git lfs pull` | **Everything**: inference + full benchmark recompute + sig-gene ablations + per-fold leak audit + retrain any classifier against shipped embeddings + FastText OOV via n-grams (no embeddings retrain needed) | **~250 GB** (≈ 187 GB LFS + ≈ 60 GB regular git) | clone + LFS pull time |
+| **0-lite** | `GIT_LFS_SKIP_SMUDGE=1 git clone` (skip LFS) | Read all source/scripts/notebooks, see commit history; cannot run inference (no model), cannot retrain DL configs (no embeddings) | ~3 GB | clone time only |
+| **1** | + regenerate the FULL embedding cache locally (only if you want to RE-TRAIN embeddings from scratch with a different corpus) | Replace shipped embeddings with your own (e.g. different unsup corpus). **Not needed for retraining downstream classifiers** — the shipped `.xz`/`.npz` cover that fully. | + extra ~10 GB intermediate | + 6–12 h on M4 Max |
 
-> ⚠️ **Heads up on the clone size.** The repo is ~8 GB because we shipped all 725 classifier weights directly (each ≤45 MB, under GitHub's 50 MB per-file warning). The 173 MB deployed pickle ships via **Git LFS** — your `git clone` fetches it automatically as long as you have Git LFS installed (`brew install git-lfs && git lfs install`, then clone).
+### How to clone properly
+
+```bash
+# 1. One-time: install Git LFS (only once per machine, not per clone)
+brew install git-lfs    # macOS — use apt-get install git-lfs on Ubuntu
+git lfs install         # initialize LFS hooks in ~/.gitconfig
+
+# 2. Clone — LFS files auto-download in parallel with git objects
+git clone https://github.com/vedpiyush93-stack/subFinder_May_Release.git
+cd subFinder_May_Release
+
+# 3. (Belt-and-braces) make sure all LFS blobs landed locally
+git lfs pull            # downloads any LFS objects that didn't get smudged
+git lfs ls-files | wc -l   # should print: 826
+```
+
+If you forgot step 1 (`git lfs install`) and only ran `git clone`, you'll see LFS pointer files instead of real content. Fix: `git lfs install && git lfs pull` after-the-fact.
+
+### What's actually in the LFS layer (826 files, ~187 GB total)
+
+| LFS file family | count | size each | what it is |
+|---|---:|---:|---|
+| `artifacts/embeddings_cache/r{seed}_f{fold}/fasttext_*_model/*.npy.xz` | 100 | ~1.86 GB | xz-compressed FastText n-gram bucket tables (4 flavors × 25 folds). `src/embeddings/loader.py:load_fasttext()` auto-decompresses on first load for **proper OOV-via-ngrams resolution**. |
+| `artifacts/predictions/*/r*_f*/classifier.{joblib,keras}` | 725 | 1 MB–45 MB | per-trial classifier weights (29 configs × 25 folds), needed for ablations + re-calibration |
+| `reproducibility/rep_*/predictions/.../classifier.{joblib,keras}` | (per push) | same | per-rep classifier weights for reproducibility study |
+| `artifacts/final_model.pkl` + `reproducibility/{rep_*,inference}/final_model.pkl` | 1 each | ~180 MB | calibrated deployed inference model |
+
+> 📌 **About the `.xz` → `.npy` decompression.** `src/embeddings/loader.py` handles this **transparently** — first call to `load_fasttext(path/to/foo.model)` checks for `.npy` sibling; if missing, decompresses `foo.model.wv.vectors_ngrams.npy.xz` once (~6 s for ~2.4 GB), caches the result next to the `.xz`, then proceeds. All training/inference scripts (`02_train_shallow.py`, `03_train_deep.py`, `06_inference.py`) route through this loader — **you never need to manually decompress anything**. The decompressed `.npy` is `.gitignore`'d so it stays local; only the compressed `.xz` ships via LFS.
 >
-> 📦 **There's still a [Drive folder](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)** mirroring the heavy artifacts as `.zip` files — only useful if you can't use Git LFS for some reason, or want a frozen snapshot. Most readers should ignore it.
+> 📦 **There's still a [Drive folder](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing)** mirroring heavy artifacts as `.zip` files — only useful if you can't use Git LFS for some reason. Most readers should ignore it.
 
 ### Which path matches you?
 
@@ -182,11 +212,11 @@ jupyter nbconvert --to notebook --execute --inplace notebooks/build_paper_artifa
 After step 4, every `\textbf{...}` claim in [`paper/main.pdf`](paper/main.pdf) / [`paper/supplement.pdf`](paper/supplement.pdf) corresponds to one stable key in `paper/audit_output.txt`:
 
 ```
-top1_acc                                                0.9058
-top1_acc_std                                            0.0172
+top1_acc                                                0.9060
+top1_acc_std                                            0.0169
 top1_n                                                  25
-gap_ours_vs_paper_baseline                              0.0616
-gap_ours_vs_best_paper_dl                               0.0810
+gap_ours_vs_paper_baseline                              0.0608
+gap_ours_vs_best_paper_dl                               0.1045
 mean_T                                                  0.6996
 lit_db_substrate_family_pairs_after_alias_collapse      394
 per_sub_sig_GT_total_hit_at_K                           768
@@ -348,7 +378,7 @@ mean=0.7157  std=0.0000  range=[0.7157, 0.7157]    ← mean_oof_T
 mean=0.9777  std=0.0000  range=[0.9777, 0.9777]    ← deployment_T
 ```
 
-`std=0.0000` over 3 reruns confirms the script is deterministic on a fixed environment. The drift you might see vs. the deployed pickle (which has `T=0.6678`) comes from numerical differences in `sklearn`/`scipy`/`BLAS` between the build that produced the pickle and your local one. **Predictions (the argmax substrate) and headline accuracy are unaffected** — only the 3rd-decimal of the calibrated probabilities moves.
+`std=0.0000` over 3 reruns confirms the script is deterministic on a fixed environment. Any drift you might see vs. a previously-frozen pickle (e.g. an earlier release with `T≈0.67`) comes from numerical differences in `sklearn`/`scipy`/`BLAS` between the build that produced the pickle and your local one. **Predictions (the argmax substrate) and headline accuracy are unaffected** — only the 3rd-decimal of the calibrated probabilities moves. The currently-shipped `final_model.pkl` was regenerated on this codebase, so re-running locally on the same environment will reproduce `deployment_T=0.9777` exactly.
 
 Reproduce the drift experiment yourself:
 

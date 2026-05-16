@@ -128,13 +128,50 @@ def test_doc2vec_dm_shallow_reduced_matches_full(corpus, stress_oov):
     _assert_no_diff("D2V_dm_shallow", full, reduced, corpus, stress_oov)
 
 
+def _ft_reduced_present(flavor: str, regime: str) -> bool:
+    """The xz-compressed ngram tables ship via LFS in waves; skip until present."""
+    return Path(f"{REL}/r42_f0/fasttext_{flavor}_{regime}_model/"
+                f"fasttext_{flavor}.model.wv.vectors_ngrams.npy.xz").exists()
+
+
 @pytest.mark.skipif(not Path(FULL_SRC).exists(),
                      reason="full source-of-truth cache not available locally")
+@pytest.mark.skipif(not _ft_reduced_present("cbow", "shallow"),
+                     reason="ftCbow shallow xz not yet pushed to LFS")
 def test_fasttext_cbow_shallow_xz_matches_full(corpus, stress_oov):
     full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model").wv
-    # our wrapper auto-decompresses the .npy.xz from the release repo
     reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model")
     _assert_no_diff("FT_cbow_shallow (xz)", full, reduced_model.wv, corpus, stress_oov)
+
+
+@pytest.mark.skipif(not Path(FULL_SRC).exists(),
+                     reason="full source-of-truth cache not available locally")
+@pytest.mark.skipif(not _ft_reduced_present("cbow", "dl"),
+                     reason="ftCbow dl xz not yet pushed to LFS")
+def test_fasttext_cbow_dl_xz_matches_full(corpus, stress_oov):
+    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_cbow_dl_model/fasttext_cbow.model").wv
+    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_cbow_dl_model/fasttext_cbow.model")
+    _assert_no_diff("FT_cbow_dl (xz)", full, reduced_model.wv, corpus, stress_oov)
+
+
+@pytest.mark.skipif(not Path(FULL_SRC).exists(),
+                     reason="full source-of-truth cache not available locally")
+@pytest.mark.skipif(not _ft_reduced_present("sg", "shallow"),
+                     reason="ftSg shallow xz not yet pushed to LFS")
+def test_fasttext_sg_shallow_xz_matches_full(corpus, stress_oov):
+    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_sg_shallow_model/fasttext_sg.model").wv
+    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_sg_shallow_model/fasttext_sg.model")
+    _assert_no_diff("FT_sg_shallow (xz)", full, reduced_model.wv, corpus, stress_oov)
+
+
+@pytest.mark.skipif(not Path(FULL_SRC).exists(),
+                     reason="full source-of-truth cache not available locally")
+@pytest.mark.skipif(not _ft_reduced_present("sg", "dl"),
+                     reason="ftSg dl xz not yet pushed to LFS")
+def test_fasttext_sg_dl_xz_matches_full(corpus, stress_oov):
+    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_sg_dl_model/fasttext_sg.model").wv
+    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_sg_dl_model/fasttext_sg.model")
+    _assert_no_diff("FT_sg_dl (xz)", full, reduced_model.wv, corpus, stress_oov)
 
 
 if __name__ == "__main__":
