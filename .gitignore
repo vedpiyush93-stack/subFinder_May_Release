@@ -66,3 +66,20 @@ paper/*.out
 # ---------------------------------------------------------------------------
 *.zip
 release_zips/
+
+# ---------------------------------------------------------------------------
+# Reproducibility framework — log dirs are noisy + per-machine; .npy decompressed
+# sidecars (auto-decompressed by load_fasttext) are reconstituted on demand.
+# Per-rep predictions/, leaderboard.csv, final_model.pkl, etc. ARE tracked.
+# ---------------------------------------------------------------------------
+reproducibility/_*_logs/
+reproducibility/_chain_logs/
+reproducibility/rep_*/logs/
+# Decompressed FT ngram sidecars — auto-rebuilt by src/embeddings/loader.py
+artifacts/embeddings_cache/*/fasttext_*_model/*.vectors_ngrams.npy
+# Stale partial xz outputs (interrupted compression)
+artifacts/embeddings_cache/*/*_model/*.xz.tmp
+# Partial .npy decompress (load_fasttext interrupted mid-decompress)
+artifacts/embeddings_cache/**/*.npy.part
+# Wakeup-pipeline stash backups (only useful locally for rollback)
+artifacts/_passAB_backup_*/

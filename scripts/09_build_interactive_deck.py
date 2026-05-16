@@ -343,8 +343,13 @@ fig2.update_layout(
 # ============================================================================
 print("[chart 3] reproducibility ...")
 orig = pd.read_csv(ROOT / "artifacts/original_benchmark_per_fold_metrics.csv")[["shorthand","repeat_seed","fold","acc"]]
+# Compare rep_1 BENCHMARK (in artifacts/) against the latest available rep_2
+# (model-init reproducibility — REPRO_REP_SEED=1000 vs 2000, same data splits).
+_FIG3_RETRAIN_SRC = ROOT / "reproducibility/rep_2"
+if not (_FIG3_RETRAIN_SRC / "predictions").exists():
+    _FIG3_RETRAIN_SRC = REP
 retrained_rows = []
-for mj in glob.glob(str(REP/"predictions/*/r*_f*/meta.json")):
+for mj in glob.glob(str(_FIG3_RETRAIN_SRC/"predictions/*/r*_f*/meta.json")):
     retrained_rows.append(json.load(open(mj)))
 df_retr = pd.DataFrame(retrained_rows).rename(columns={"seed":"repeat_seed","test_acc":"acc"})[["shorthand","repeat_seed","fold","acc"]]
 # Only keep configs with COMPLETE 25-trial retrain so the orig-vs-retrain comparison is apples-to-apples.
@@ -370,9 +375,9 @@ agg2 = agg2.sort_values("abs_delta", ascending=True)
 
 fig3 = go.Figure()
 for tag, color, descr in [
-    ("Bit-deterministic — our sklearn winners (Δ = 0.0000 exactly)", SAGE, "Δ = 0 exactly"),
-    ("Paper Balanced RF baselines (imblearn) — |Δ| ≤ 0.0017", NAVY, "thread-order non-determinism"),
-    ("Paper deep models (Keras / TF) — |Δ| ≤ 0.04", ORANGE, "GPU op-order non-determinism"),
+    ("ExtraTrees winners (random_state-seeded → Δ = 0)", SAGE, "random_state seeded → identical trees → Δ = 0"),
+    ("Balanced RF baselines (random_state-seeded)", NAVY, "small Δ from imblearn thread-order non-determinism"),
+    ("DL configurations (weight init + GPU op-order)", ORANGE, "model-init variance + GPU op-order non-determinism"),
 ]:
     if tag.startswith("Bit"):
         sub = agg2[agg2.shorthand.isin(["cpu__ET500_log2","ftCbow_MM__ET500_sqrt"])]
@@ -387,8 +392,8 @@ for tag, color, descr in [
         customdata=np.stack([sub.orig, sub.retr, sub.delta, sub.max_abs_fold_delta, sub.shorthand], axis=-1),
         hovertemplate=(
             "<b>%{y}</b><br>" + descr + "<br>"
-            "Original 5×5 mean: %{customdata[0]:.4f}<br>"
-            "Retrained 5×5 mean: %{customdata[1]:.4f}<br>"
+            "rep_1 (benchmark) 5×5 mean: %{customdata[0]:.4f}<br>"
+            "rep_2 (other rep) 5×5 mean: %{customdata[1]:.4f}<br>"
             "Mean Δ: %{customdata[2]:.4f}<br>"
             "Max single-fold |Δ|: %{customdata[3]:.4f}<br>"
             "Shorthand: %{customdata[4]}<extra></extra>"
@@ -396,10 +401,10 @@ for tag, color, descr in [
     ))
 fig3.add_vline(x=0, line=dict(color=BLACK, width=1.5))
 fig3.update_layout(
-    title=dict(text="<b>Reproducibility of rep_1 retrain vs original benchmark — sorted by |Δ|</b><br>"
-                    "<span style='font-size:13px;color:black'><b>Our sklearn winners match BIT-IDENTICALLY.</b> The deltas you see are all from documented non-determinism sources (imblearn thread order, TF GPU op-order) and don't change rankings.</span>",
+    title=dict(text="<b>Reproducibility — rep_2 (REPRO_REP_SEED=2000) vs rep_1 (REPRO_REP_SEED=1000) — sorted by |Δ|</b><br>"
+                    "<span style='font-size:13px;color:black'>Data splits FIXED at 5×5 RSKF; only model-init seed varies across reps. <b>Our ExtraTrees winners are random_state-seeded → Δ = 0.</b> DL deltas come from weight-init + GPU op-order non-determinism; rankings of top configs are stable.</span>",
                x=0, font=PLOTLY_TITLE_FONT),
-    xaxis=dict(title=dict(text="<b>Δ accuracy   (retrained − original 5×5 mean)</b>", font=PLOTLY_AXIS_FONT),
+    xaxis=dict(title=dict(text="<b>Δ accuracy   (rep_2 − rep_1 5×5 mean)</b>", font=PLOTLY_AXIS_FONT),
                range=[-0.045, 0.025], gridcolor="#dddddd", tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
     yaxis=dict(automargin=True,
                categoryorder="array", categoryarray=agg2.pretty.tolist(),

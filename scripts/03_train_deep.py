@@ -127,6 +127,7 @@ def main():
     ap.add_argument("--reuse",   action="store_true")
     ap.add_argument("--retrain", action="store_true")
     ap.add_argument("--only",    nargs="+", default=None)
+    ap.add_argument("--only-folds", nargs="+", default=None, help="subset of fold keys like 'r42_f0' (default: all 25)")
     ap.add_argument("--cache-dir", default=str(ROOT/"artifacts/embeddings_cache"))
     ap.add_argument("--out-dir",   default=str(ROOT/"artifacts/predictions"))
     ap.add_argument("--max-seq-len", type=int, default=30)
@@ -153,6 +154,7 @@ def main():
     import keras
     for seed, fold, tr_outer, te, tr_inner, val in rskf_splits(y):
         fold_key = f"r{seed}_f{fold}"
+        if args.only_folds and fold_key not in args.only_folds: continue
         for cfg in targets:
             emb_arch, dl_arch = DL_CONFIGS[cfg]
             out = out_dir/cfg/fold_key

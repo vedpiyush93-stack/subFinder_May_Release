@@ -9,6 +9,7 @@ All three use ``class_weight='balanced'``. ExtraTrees uses ``bootstrap=False``
 (no bagging) so every tree sees the full outer-training fold.
 """
 from __future__ import annotations
+import os
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.multiclass import OneVsRestClassifier
 try:
@@ -17,17 +18,41 @@ except Exception:  # pragma: no cover
     BalancedRandomForestClassifier = None
 
 
+def _rep_seed() -> int:
+    return int(os.environ.get("REPRO_REP_SEED", "42"))
+
+
 def _ET(max_features: str):
     return OneVsRestClassifier(ExtraTreesClassifier(
         n_estimators=500, max_features=max_features,
-        class_weight="balanced", bootstrap=False, random_state=42))
+        class_weight="balanced", bootstrap=False, random_state=_rep_seed()))
 
 def _BRF():
+    """Paper-faithful BalancedRandomForest (source: subFinder/Codes/Supervised_Trainer_tran.py).
+
+    Source instantiates `BalancedRandomForestClassifier(n_jobs=7)` and passes
+    `n_estimators=100, class_weight='balanced'` through the GridSearchCV
+    param-grid. All OTHER constructor args are the imblearn defaults at the
+    time the paper was written, which are:
+        sampling_strategy='auto'   (= 'not majority' bootstrap)
+        replacement=False
+        bootstrap=True             (standard random-forest bagging)
+
+    Newer imblearn (0.13+) changed those defaults; we set them EXPLICITLY here
+    so behavior is locked to the paper baseline regardless of installed version.
+    The deprecation warnings this triggers in newer imblearn are expected and
+    intentional — they're the cost of matching source exactly.
+    """
     if BalancedRandomForestClassifier is None:
         raise RuntimeError("imblearn not installed — `pip install imbalanced-learn`")
     return OneVsRestClassifier(BalancedRandomForestClassifier(
-        n_estimators=100, class_weight="balanced",
-        sampling_strategy="all", replacement=True, bootstrap=False, random_state=42))
+        n_estimators=100,
+        class_weight="balanced",
+        sampling_strategy="auto",   # paper default
+        replacement=False,           # paper default
+        bootstrap=True,              # paper default (RF-style bagging)
+        random_state=_rep_seed(),
+    ))
 
 
 SHALLOW_ARCHITECTURES = {
