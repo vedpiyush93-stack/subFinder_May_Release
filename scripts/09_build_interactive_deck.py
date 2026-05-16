@@ -371,34 +371,52 @@ agg2 = agg2.merge(per_fold_abs, on="shorthand")
 agg2["delta"] = agg2.retr - agg2.orig
 agg2["abs_delta"] = agg2.delta.abs()
 agg2["pretty"] = agg2.shorthand.apply(pretty_name)
-agg2 = agg2.sort_values("abs_delta", ascending=True)
-
 fig3 = go.Figure()
-for tag, color, descr in [
-    ("ExtraTrees winners (random_state-seeded → Δ = 0)", SAGE, "random_state seeded → identical trees → Δ = 0"),
-    ("Balanced RF baselines (random_state-seeded)", NAVY, "small Δ from imblearn thread-order non-determinism"),
-    ("DL configurations (weight init + GPU op-order)", ORANGE, "model-init variance + GPU op-order non-determinism"),
+
+# Sort by |Δ| DESCENDING so largest |Δ| at top (most-different from rep_1 first)
+agg2 = agg2.sort_values("abs_delta", ascending=False).reset_index(drop=True)
+
+# Bucket each config + assign one color per bar
+def _bucket_color(sh):
+    if sh in ("cpu__ET500_log2", "ftCbow_MM__ET500_sqrt"):
+        return SAGE, "ExtraTrees winner"
+    if "BRF100" in sh:
+        return NAVY, "Balanced RF baseline"
+    return ORANGE, "DL config (LSTM/LSTMattn/JustAttn/Trans)"
+agg2["color"] = agg2.shorthand.apply(lambda s: _bucket_color(s)[0])
+agg2["bucket_label"] = agg2.shorthand.apply(lambda s: _bucket_color(s)[1])
+
+# Reverse rows so plotly draws TOP→BOTTOM in agg2 row order
+agg2_plot = agg2.iloc[::-1].reset_index(drop=True)
+
+# ONE bar per config, colored by bucket
+fig3.add_trace(go.Bar(
+    y=agg2_plot.pretty, x=agg2_plot.delta, orientation="h",
+    marker=dict(color=list(agg2_plot.color), line=dict(color=BLACK, width=0.6)),
+    showlegend=False,
+    customdata=np.stack([agg2_plot.orig, agg2_plot.retr, agg2_plot.delta,
+                          agg2_plot.max_abs_fold_delta, agg2_plot.shorthand,
+                          agg2_plot.bucket_label], axis=-1),
+    hovertemplate=(
+        "<b>%{y}</b><br>"
+        "Bucket: %{customdata[5]}<br>"
+        "rep_1 (benchmark) 5×5 mean: %{customdata[0]:.4f}<br>"
+        "rep_2 (other rep) 5×5 mean:  %{customdata[1]:.4f}<br>"
+        "Mean Δ:                      %{customdata[2]:+.4f}<br>"
+        "Max single-fold |Δ|:         %{customdata[3]:.4f}<br>"
+        "Shorthand: %{customdata[4]}<extra></extra>"
+    ),
+))
+
+# Legend-only invisible traces (one per bucket) so user sees the color key
+for label, color in [
+    ("ExtraTrees winners (random_state-seeded → identical trees → Δ ≈ 0)", SAGE),
+    ("Balanced RF baselines (random_state-seeded; thread-order non-det only)", NAVY),
+    ("DL configs (weight init + GPU op-order non-determinism)", ORANGE),
 ]:
-    if tag.startswith("Bit"):
-        sub = agg2[agg2.shorthand.isin(["cpu__ET500_log2","ftCbow_MM__ET500_sqrt"])]
-    elif tag.startswith("Paper Balanced"):
-        sub = agg2[agg2.shorthand.str.contains("BRF100")]
-    else:
-        sub = agg2[~agg2.shorthand.isin(["cpu__ET500_log2","ftCbow_MM__ET500_sqrt"]) & ~agg2.shorthand.str.contains("BRF100")]
-    if sub.empty: continue
-    fig3.add_trace(go.Bar(
-        y=sub.pretty, x=sub.delta, orientation="h",
-        name=tag, marker=dict(color=color, line=dict(color=BLACK, width=0.5)),
-        customdata=np.stack([sub.orig, sub.retr, sub.delta, sub.max_abs_fold_delta, sub.shorthand], axis=-1),
-        hovertemplate=(
-            "<b>%{y}</b><br>" + descr + "<br>"
-            "rep_1 (benchmark) 5×5 mean: %{customdata[0]:.4f}<br>"
-            "rep_2 (other rep) 5×5 mean: %{customdata[1]:.4f}<br>"
-            "Mean Δ: %{customdata[2]:.4f}<br>"
-            "Max single-fold |Δ|: %{customdata[3]:.4f}<br>"
-            "Shorthand: %{customdata[4]}<extra></extra>"
-        ),
-    ))
+    fig3.add_trace(go.Bar(y=[None], x=[None], orientation="h",
+                          name=label, marker=dict(color=color),
+                          showlegend=True, hoverinfo="skip"))
 fig3.add_vline(x=0, line=dict(color=BLACK, width=1.5))
 fig3.update_layout(
     title=dict(text="<b>Reproducibility — rep_2 (REPRO_REP_SEED=2000) vs rep_1 (REPRO_REP_SEED=1000) — sorted by |Δ|</b><br>"
@@ -407,7 +425,7 @@ fig3.update_layout(
     xaxis=dict(title=dict(text="<b>Δ accuracy   (rep_2 − rep_1 5×5 mean)</b>", font=PLOTLY_AXIS_FONT),
                range=[-0.045, 0.025], gridcolor="#dddddd", tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
     yaxis=dict(automargin=True,
-               categoryorder="array", categoryarray=agg2.pretty.tolist(),
+               categoryorder="array", categoryarray=agg2_plot.pretty.tolist(),
                tickfont=dict(family="Helvetica, Arial, sans-serif", color=BLACK, size=11, weight=700)),
     plot_bgcolor="white", paper_bgcolor="white",
     height=820, margin=dict(l=360, r=40, t=110, b=70),
