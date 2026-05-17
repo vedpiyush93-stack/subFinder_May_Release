@@ -34,6 +34,7 @@
 > **Model uncertainty in one number:** the winner's accuracy moves by ≤ 0.0016 across 5 independent re-trainings with different model-init seeds (`REPRO_REP_SEED=1000/2000/3000/4000/5000`, data splits held fixed). Per-family median cross-rep std: OvR(ExtraTrees) **0.0006** · OvR(BalancedRF) 0.0027 · DL families 0.0047–0.0064 — our shallow winner is 8–10× more reproducible than any DL baseline.
 
 **Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (25 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
+**Want to browse every individual test PUL?** Open [`docs/per_pul_report.html`](docs/per_pul_report.html) — 13 tabs (overview + one per substrate), every test PUL with full calibrated probabilities, p-values, signature genes, literature-match badges, and per-fold OOV.
 
 ---
 
@@ -119,6 +120,7 @@ python3 scripts/05_calibrate_best.py       # ~30 s  calibration_report.csv (4 me
 python3 scripts/07_build_paper_artifacts.py # ~45 s  paper/tables/*.csv + audit_output.txt
 python3 scripts/10_build_case_studies.py   # ~5 s   docs/figures/fig11-13.png + tables
 python3 scripts/11_build_cross_rep_stability.py # ~3 s  docs/figures/fig14.png + cross-rep CSVs
+python3 scripts/12_build_per_pul_report.py # ~10 s  docs/per_pul_report.html (1030 test PULs, 13 tabs)
 python3 scripts/08_build_static_deck.py    # ~30 s  docs/deck.pptx
 python3 scripts/09_build_interactive_deck.py # ~10 s  docs/deck.html
 
@@ -193,7 +195,7 @@ Vectors are bit-identical to the source uncompressed model — proven by `pytest
 subFinder_May_Release/
 ├── data/                    1,030 labeled PULs + curated CAZy↔substrate DB
 ├── src/                     library (preprocessing, embeddings, shallow, deep, calibration, ablation, inference)
-├── scripts/                 11 CLI drivers (01_train_embeddings → 11_build_cross_rep_stability)
+├── scripts/                 12 CLI drivers (01_train_embeddings → 12_build_per_pul_report)
 ├── notebooks/               build_paper_artifacts.ipynb (master end-to-end feeder)
 ├── artifacts/
 │   ├── predictions/         29 configs × 25 trials × {probs_test.npz, probs_train.npz, classifier.*, meta.json}
@@ -329,6 +331,8 @@ Reproduce the drift experiment: `python3 scripts/experiments/measure_t_drift.py 
 - **[`docs/deck.html`](docs/deck.html)** — interactive Plotly (hover, zoom, keyboard arrows). Clone the repo and `open docs/deck.html` to view; GitHub's web viewer renders it as raw HTML.
 
 Includes 4 reviewer-impact slides: **cross-rep stability forest plot** (5 reps × 25 trials, fixed splits), rank-K redemption, calibrated confidence vs correctness, 6 hand-picked PUL case studies.
+
+**Per-PUL test-set report:** [`docs/per_pul_report.html`](docs/per_pul_report.html) — 13 tabs (Overview + one per substrate class), every test PUL from rep_1's seed-42 OOF with calibrated probabilities for all 12 classes, p-values, top-5 signature genes with literature-match badges (exact / collapse / non-canonical), and per-PUL OOV vs that PUL's training fold vocab. Single self-contained file, ~4 MB. Regenerate with `python3 scripts/12_build_per_pul_report.py`.
 
 ---
 

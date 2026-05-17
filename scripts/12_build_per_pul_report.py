@@ -1,0 +1,625 @@
+#!/usr/bin/env python3
+"""Build docs/per_pul_report.html — a per-substrate browse of every test PUL
+from the seed-42 5-fold OOF (rep_1), with calibrated probabilities, p-values,
+signature genes, literature-match badges, and per-fold OOV proportion.
+
+The report has 13 tabs:
+    Overview         5 demo PULs displayed in "full 12-row prediction form"
+                     (each row = one substrate class, sorted by descending
+                     calibrated probability, with sig genes for top-1 + TRUE)
+    alginate         every test PUL with TRUE substrate = alginate
+    alpha-glucan     every test PUL with TRUE substrate = alpha-glucan
+    ...              (12 substrate tabs total)
+
+Per-substrate tabs show, for each test PUL:
+    - TRUE vs predicted, rank of TRUE in top-K (1 / 2 / 3 / >3)
+    - 12-class calibrated probability vector as horizontal mini-bars
+    - Top-5 signature genes (leave-one-token-out Δ on TRUE-class calibrated
+      probs) with literature-match badges (exact | collapse | not canonical)
+    - OOV proportion vs the PUL's own training fold vocab
+    - Full PUL gene token sequence (collapsible)
+
+Single-file self-contained HTML, no external deps (CSS + JS inline).
+
+Usage:
+    python3 scripts/12_build_per_pul_report.py
+    open docs/per_pul_report.html
+"""
+from __future__ import annotations
+import json, html, sys, re
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from src.preprocessing.tokenizers import tok_cpu
+from src.lit_validation.canon import build_canon
+from src.splits import rskf_splits
+
+OUT_HTML = ROOT / "docs" / "per_pul_report.html"
+
+# ---------------------------------------------------------------------------
+# Load all data
+# ---------------------------------------------------------------------------
+print("[per-pul-report] loading data ...")
+df_data = pd.read_csv(ROOT / "data/Train_data.csv")
+sequences = df_data["sig_gene_seq"].fillna("").values
+y_true_str = df_data["high_level_substr"].values
+substrates = sorted(set(y_true_str))
+n_classes = len(substrates)
+sub2idx = {s: i for i, s in enumerate(substrates)}
+
+# Calibrated OOF probabilities (rep_1 seed-42 5-fold OOF)
+calib_npz = np.load(ROOT / "artifacts/calibration/oof_outer42_best_of_both.npz", allow_pickle=True)
+P_cal = calib_npz["probs_temp"]         # (1030, 12)  — temperature-scaled
+y_true_int = calib_npz["y_true"]        # (1030,)     — integer-encoded labels
+T_per_fold = list(calib_npz["T_per_fold"])
+print(f"  calibrated probs: shape={P_cal.shape}, T_per_fold={[f'{t:.4f}' for t in T_per_fold]}")
+
+# Per-PUL signature genes (TRUE-class, calibrated)
+sig_csv = ROOT / "artifacts/ablation/sig_gene_ablation_oof_outer42_groundtruth_calibrated.csv"
+sig_df = pd.read_csv(sig_csv).set_index("idx")
+print(f"  sig-gene ablation: {len(sig_df)} rows")
+
+# Per-PUL signature genes (argmax-class, calibrated)
+sig_arg_csv = ROOT / "artifacts/ablation/sig_gene_ablation_oof_outer42.csv"
+sig_arg_df = pd.read_csv(sig_arg_csv).set_index("idx")
+
+def _parse_top5_with_delta(s: str) -> list[tuple[str, float]]:
+    """Parse 'tok:+0.1234;tok2:+0.0567;...' into [(tok, delta), ...]."""
+    if not isinstance(s, str) or not s.strip(): return []
+    pairs = []
+    for part in s.split(";"):
+        part = part.strip()
+        if ":" not in part: continue
+        tok, dv = part.rsplit(":", 1)
+        try: pairs.append((tok, float(dv)))
+        except ValueError: pass
+    return pairs
+
+# Literature canon (substrate → set of canonical CAZy families)
+canon = build_canon(ROOT / "data/Literature_Data_fam_substrate_mapping.tsv")
+print(f"  lit canon: {sum(len(v) for v in canon.values())} (substrate, CAZy) pairs across {len(canon)} classes")
+
+# Build lit-substrate index for "match type" badges:
+#   exact  : the canonical CAZy is in canon[predicted_substrate] AND substrate name = top-level (1:1)
+#   collapse: matched via alias collapse (canonical in canon[substrate], but substrate is a collapsed name)
+# For simplicity we treat canon membership as "exact or collapse" — fine-grained source comes from alias_map below
+from src.lit_validation.alias_map import SUBSTRATE_ALIAS
+EXACT_LIT = set()      # (high_class, lit_sub_name) where lit_sub matches high_class 1:1
+COLLAPSE_LIT = set()   # (high_class, lit_sub_name) where lit_sub is collapsed into high_class
+for high, aliases in SUBSTRATE_ALIAS.items():
+    for a in aliases:
+        if a == high: EXACT_LIT.add(high)
+        else: COLLAPSE_LIT.add((high, a))
+
+# Pre-compute per-PUL OOV vs that PUL's *training fold* vocab. The 5-fold OOF
+# uses seed-42 only (matches calibration npz). For each fold, refit CountVec on
+# outer_train, then compute OOV for every test row in that fold.
+print("[per-pul-report] computing per-fold OOV (refitting CountVec for each of 5 folds) ...")
+oov_per_pul = np.zeros(len(sequences), dtype=np.float32)
+n_oov_tokens = np.zeros(len(sequences), dtype=np.int32)
+n_total_tokens = np.zeros(len(sequences), dtype=np.int32)
+fold_per_pul = np.full(len(sequences), -1, dtype=np.int32)
+fold_train_vocab_size = {}  # fold_id (0-4) -> vocab size
+
+for seed, fold, tr_outer, te, tr_inner, val in rskf_splits(y_true_str):
+    if seed != 42: continue
+    cv = CountVectorizer(tokenizer=tok_cpu, lowercase=False, token_pattern=None)
+    cv.fit(sequences[tr_outer])
+    vocab = set(cv.vocabulary_.keys())
+    fold_train_vocab_size[fold] = len(vocab)
+    for idx in te:
+        toks = tok_cpu(sequences[idx])
+        n_total_tokens[idx] = len(toks)
+        n_oov_tokens[idx]   = sum(1 for t in toks if t not in vocab)
+        oov_per_pul[idx]    = (n_oov_tokens[idx] / max(1, len(toks)))
+        fold_per_pul[idx]   = fold
+print(f"  per-fold vocab sizes: {dict(sorted(fold_train_vocab_size.items()))}")
+print(f"  PULs with OOV > 0: {(oov_per_pul > 0).sum()}/{len(sequences)}  "
+      f"(>10%: {(oov_per_pul > 0.10).sum()})")
+
+# Dirichlet-uniform p-value (matches deployed PULPredictor)
+def p_value_dirichlet_uniform(p: float) -> float:
+    """P(X >= p) where X ~ Beta(1, K-1) under a uniform Dirichlet null."""
+    # P(X >= p) = (1 - p) ** (K - 1)
+    return float((1.0 - p) ** (n_classes - 1))
+
+
+# ---------------------------------------------------------------------------
+# Build per-PUL records
+# ---------------------------------------------------------------------------
+print("[per-pul-report] building per-PUL records ...")
+PUL_RECORDS = []  # list of dicts; one per PUL (1030 of them)
+for i in range(len(sequences)):
+    probs = P_cal[i]
+    order = np.argsort(probs)[::-1]
+    ranked = [(substrates[j], float(probs[j])) for j in order]
+    true_sub = y_true_str[i]
+    pred_sub = substrates[int(probs.argmax())]
+    rank_true = int(np.where(order == sub2idx[true_sub])[0][0]) + 1
+    prob_true = float(probs[sub2idx[true_sub]])
+    # Sig genes (TRUE-class)
+    sig_true_str = sig_df.loc[i, "top5_with_delta"] if i in sig_df.index else ""
+    sig_true = _parse_top5_with_delta(str(sig_true_str))
+    # Sig genes (argmax/predicted-class)
+    sig_arg_str = sig_arg_df.loc[i, "top5_with_delta"] if i in sig_arg_df.index else ""
+    sig_argmax = _parse_top5_with_delta(str(sig_arg_str))
+
+    PUL_RECORDS.append({
+        "idx": i,
+        "sequence": sequences[i],
+        "tokens": tok_cpu(sequences[i]),
+        "true": true_sub,
+        "pred": pred_sub,
+        "probs": {substrates[j]: float(probs[j]) for j in range(n_classes)},
+        "ranked": ranked,         # [(substrate, prob), ...] sorted desc
+        "rank_true": rank_true,
+        "prob_true": prob_true,
+        "fold": int(fold_per_pul[i]),
+        "oov_pct": float(oov_per_pul[i]) * 100,
+        "n_oov": int(n_oov_tokens[i]),
+        "n_tok": int(n_total_tokens[i]),
+        "sig_true": sig_true,         # for the TRUE class
+        "sig_argmax": sig_argmax,     # for the predicted class
+    })
+
+
+# ---------------------------------------------------------------------------
+# HTML helpers
+# ---------------------------------------------------------------------------
+NAVY   = "#1a3a5c"
+SAGE   = "#27ae60"
+AMBER  = "#f39c12"
+RED    = "#c0392b"
+GRAY   = "#7f8c8d"
+
+# Color per substrate (12 distinct, colorblind-aware)
+SUB_COLORS = {
+    "alginate":         "#1f77b4",
+    "alpha-glucan":     "#d62728",
+    "alpha-mannan":     "#9467bd",
+    "arabinogalactan":  "#8c564b",
+    "beta-glucan":      "#ff7f0e",
+    "beta-mannan":      "#e377c2",
+    "chitin":           "#17becf",
+    "fructan":          "#7f7f7f",
+    "galactan":         "#bcbd22",
+    "host glycan":      "#2ca02c",
+    "pectin":           "#aec7e8",
+    "xylan":            "#ffbb78",
+}
+
+def _tok_is_cazy(t: str) -> bool:
+    return bool(re.match(r"^(GH|PL|CE|CBM|GT|AA)[0-9]+(_[0-9]+)?$", t))
+
+def _lit_label_for(class_name: str, tok: str) -> tuple[str, str]:
+    """Return (badge_class, badge_text) for how `tok` relates to literature for `class_name`."""
+    if not _tok_is_cazy(tok):
+        return ("badge-non", "non-CAZy")
+    base = tok.split("_")[0]
+    canon_set = canon.get(class_name, set())
+    if tok in canon_set or base in canon_set:
+        # Check if this match is via exact or collapse
+        # heuristic: if substrate is in EXACT_LIT and there are no alias entries, it's exact-only
+        # if SUBSTRATE_ALIAS[class_name] has > 1 entry, it's likely collapse
+        aliases = SUBSTRATE_ALIAS.get(class_name, [class_name])
+        if len(aliases) <= 1: return ("badge-exact", "LIT exact")
+        return ("badge-collapse", "LIT collapse")
+    return ("badge-miss", "not in lit canon")
+
+def _prob_bar(prob: float, color: str, width_px: int = 110) -> str:
+    """Render a single horizontal prob bar (inline-block)."""
+    pct = max(1, int(prob * 100))
+    return (f'<span class="bar-wrap" style="width:{width_px}px">'
+            f'<span class="bar-fill" style="width:{pct}%;background:{color}"></span>'
+            f'<span class="bar-num">{prob:.3f}</span>'
+            f'</span>')
+
+def _rank_badge(rank: int) -> str:
+    if rank == 1: return f'<span class="rank rank-1">#1 ✓</span>'
+    if rank == 2: return f'<span class="rank rank-2">#2</span>'
+    if rank == 3: return f'<span class="rank rank-3">#3</span>'
+    return f'<span class="rank rank-bad">#{rank}</span>'
+
+def _sig_genes_html(class_name: str, sig: list[tuple[str, float]]) -> str:
+    """Render top-5 sig genes for one class as colored chips."""
+    if not sig: return '<span class="muted">—</span>'
+    parts = []
+    for tok, d in sig[:5]:
+        badge_cls, badge_text = _lit_label_for(class_name, tok)
+        parts.append(
+            f'<span class="sig-chip {badge_cls}" title="Δ-prob = {d:+.4f}; {badge_text}">'
+            f'<b>{html.escape(tok)}</b> <span class="dlt">Δ{d:+.3f}</span>'
+            f'</span>'
+        )
+    return "".join(parts)
+
+def _seq_html(tokens: list[str], oov_set: set[str]) -> str:
+    """Render a PUL sequence as colored token chips; OOV tokens in red."""
+    parts = []
+    for t in tokens:
+        cls = "tok-oov" if t in oov_set else ("tok-cazy" if _tok_is_cazy(t) else "tok-norm")
+        parts.append(f'<span class="tok {cls}">{html.escape(t)}</span>')
+    return '<span class="seq">' + " ".join(parts) + '</span>'
+
+def _oov_set_for_pul(i: int) -> set[str]:
+    """The set of tokens in PUL i that are not in its training fold's vocab.
+    We don't store the per-fold vocab, so we re-derive on the fly."""
+    return _OOV_LOOKUP.get(i, set())
+
+# Pre-cache OOV token set per PUL (we already have count, but need the actual tokens for highlighting)
+print("[per-pul-report] caching per-fold OOV token sets for highlighting ...")
+_OOV_LOOKUP: dict[int, set[str]] = {}
+for seed, fold, tr_outer, te, _, _ in rskf_splits(y_true_str):
+    if seed != 42: continue
+    cv = CountVectorizer(tokenizer=tok_cpu, lowercase=False, token_pattern=None)
+    cv.fit(sequences[tr_outer])
+    vocab = set(cv.vocabulary_.keys())
+    for idx in te:
+        toks = tok_cpu(sequences[idx])
+        _OOV_LOOKUP[idx] = {t for t in toks if t not in vocab}
+
+# ---------------------------------------------------------------------------
+# Overview tab — pick 5 demo PULs, render full 12-row prediction form per PUL
+# ---------------------------------------------------------------------------
+def _pul_full_form(r: dict) -> str:
+    """Render one PUL as a 12-row table (one row per substrate, sorted by prob desc).
+    Each row: substrate · prob bar · p-value · sig genes for that substrate (if available).
+    Sig genes are shown for the TRUE class and the predicted class only (we don't have
+    ablation cached for the other 10 classes).
+    """
+    is_correct = r["pred"] == r["true"]
+    rank_html = _rank_badge(r["rank_true"])
+    correct_badge = ('<span class="ok-badge">✓ correct top-1</span>' if is_correct
+                     else f'<span class="bad-badge">✗ TRUE at rank {r["rank_true"]}</span>')
+    rows = []
+    for sub, p in r["ranked"]:
+        color = SUB_COLORS.get(sub, GRAY)
+        pval = p_value_dirichlet_uniform(p)
+        is_true = (sub == r["true"])
+        is_pred = (sub == r["pred"])
+        flags = []
+        if is_true: flags.append('<span class="flag-true">TRUE</span>')
+        if is_pred: flags.append('<span class="flag-pred">argmax</span>')
+        # Sig genes for this row: only shown for TRUE-class (sig_true) or argmax-class (sig_argmax)
+        sig_html = ""
+        if is_true and r["sig_true"]:
+            sig_html = _sig_genes_html(sub, r["sig_true"])
+        elif is_pred and r["sig_argmax"]:
+            sig_html = _sig_genes_html(sub, r["sig_argmax"])
+        else:
+            sig_html = '<span class="muted">(not cached for this class)</span>'
+        row_cls = "row-true" if is_true else ("row-pred" if is_pred else "")
+        rows.append(
+            f'<tr class="{row_cls}">'
+            f'<td class="sub-cell"><span class="sub-dot" style="background:{color}"></span>'
+            f'<b>{html.escape(sub)}</b> {" ".join(flags)}</td>'
+            f'<td>{_prob_bar(p, color, width_px=180)}</td>'
+            f'<td class="mono">{pval:.2e}</td>'
+            f'<td class="sig-cell">{sig_html}</td>'
+            f'</tr>'
+        )
+    return (
+        f'<div class="pul-card">'
+        f'<div class="pul-card-head">'
+        f'<div><b>PUL idx {r["idx"]}</b> · fold {r["fold"]} · '
+        f'TRUE = <b>{html.escape(r["true"])}</b> · pred = <b>{html.escape(r["pred"])}</b> '
+        f'{rank_html} {correct_badge}</div>'
+        f'<div class="meta-line">OOV: {r["oov_pct"]:.1f}% '
+        f'({r["n_oov"]}/{r["n_tok"]} tokens unknown to training fold)</div>'
+        f'</div>'
+        f'<details><summary>PUL gene token sequence ({r["n_tok"]} tokens)</summary>'
+        f'<div class="seq-box">{_seq_html(r["tokens"], _oov_set_for_pul(r["idx"]))}</div></details>'
+        f'<table class="prob-table">'
+        f'<thead><tr><th style="width:30%">substrate</th><th>calibrated prob</th>'
+        f'<th>p-value</th><th>signature genes (top-5 by Δ on that class)</th></tr></thead>'
+        f'<tbody>' + "".join(rows) + '</tbody>'
+        f'</table>'
+        f'</div>'
+    )
+
+# Pick demo PULs: 1 confident-correct, 1 medium-conf, 1 low-conf-correct,
+# 1 rank-2 redemption, 1 rank-3 redemption, 1 confident-wrong
+def _pick_demo_puls() -> list[dict]:
+    candidates = {
+        "Confident correct (top-1, high prob)":         lambda r: r["pred"] == r["true"] and r["prob_true"] > 0.95,
+        "Medium-confidence correct":                     lambda r: r["pred"] == r["true"] and 0.45 < r["prob_true"] < 0.65,
+        "Low-confidence correct (model knows it's unsure)": lambda r: r["pred"] == r["true"] and 0.30 < r["prob_true"] < 0.42,
+        "Rank-2 redemption (TRUE at rank 2)":            lambda r: r["rank_true"] == 2 and r["prob_true"] > 0.10,
+        "Rank-3 redemption (TRUE at rank 3)":            lambda r: r["rank_true"] == 3 and r["prob_true"] > 0.05,
+        "Confident WRONG (TRUE missed top-3)":           lambda r: r["pred"] != r["true"] and r["probs"][r["pred"]] > 0.6 and r["rank_true"] > 3,
+    }
+    out = []
+    for label, predicate in candidates.items():
+        match = next((r for r in PUL_RECORDS if predicate(r)), None)
+        if match: out.append({"label": label, "rec": match})
+    return out
+
+DEMO_PULS = _pick_demo_puls()
+print(f"[per-pul-report] selected {len(DEMO_PULS)} demo PULs for Overview tab")
+
+def _overview_html() -> str:
+    intro = (
+        '<div class="intro">'
+        '<h2>How to read these reports</h2>'
+        '<p>Every PUL is run through the deployed calibrated model '
+        '(<code>cpu__ET500_log2</code>, mean T ≈ 0.70) and gets a probability distribution '
+        'over all 12 substrate classes. Below are <b>6 hand-picked test PULs</b> shown in '
+        '<i>full prediction form</i>: one row per substrate, sorted by descending calibrated '
+        'probability, with the p-value under a uniform-Dirichlet null and the leave-one-token-out '
+        'signature genes (cached for the TRUE class and the argmax class only).</p>'
+        '<p>Use the <b>per-substrate tabs above</b> to browse every test PUL grouped by ground-truth '
+        'class — useful for inspecting, e.g., "every test PUL whose TRUE substrate is fructan."</p>'
+        '<p><b>Legend</b>: '
+        '<span class="ok-badge">✓ correct top-1</span> '
+        '<span class="bad-badge">✗ TRUE at rank N</span> '
+        '<span class="sig-chip badge-exact"><b>GH13</b></span> literature canonical (exact match) · '
+        '<span class="sig-chip badge-collapse"><b>GH16</b></span> literature canonical (via alias collapse) · '
+        '<span class="sig-chip badge-miss"><b>GH99</b></span> CAZy but not in lit canon for this class · '
+        '<span class="sig-chip badge-non"><b>LacI</b></span> non-CAZy regulator/transporter.'
+        '</p>'
+        '</div>'
+    )
+    cards = []
+    for d in DEMO_PULS:
+        cards.append(f'<div class="demo-section"><h3>{html.escape(d["label"])}</h3>'
+                     + _pul_full_form(d["rec"]) + '</div>')
+    return intro + "".join(cards)
+
+
+# ---------------------------------------------------------------------------
+# Per-substrate tabs
+# ---------------------------------------------------------------------------
+def _pul_compact_card(r: dict) -> str:
+    """Compact card showing one test PUL within a substrate's tab.
+
+    Layout: header bar (TRUE | pred | rank | OOV); 12-row prob mini-table sorted by prob;
+    sig genes row; collapsible sequence.
+    """
+    is_correct = r["pred"] == r["true"]
+    rank_html = _rank_badge(r["rank_true"])
+    border_color = SAGE if r["rank_true"] == 1 else (AMBER if r["rank_true"] <= 3 else RED)
+    # Probability mini-bars (sorted desc; TRUE class highlighted)
+    prob_rows = []
+    for sub, p in r["ranked"]:
+        color = SUB_COLORS.get(sub, GRAY)
+        is_true = sub == r["true"]
+        cls = "row-true" if is_true else ""
+        marker = '<b>★</b>' if is_true else ''
+        prob_rows.append(
+            f'<tr class="{cls}"><td>{marker} {html.escape(sub)}</td>'
+            f'<td>{_prob_bar(p, color, width_px=130)}</td></tr>'
+        )
+    sig_html = _sig_genes_html(r["true"], r["sig_true"])
+    return (
+        f'<div class="card" style="border-left-color:{border_color}">'
+        f'<div class="card-head">'
+        f'<span class="card-idx">PUL #{r["idx"]}</span> · fold {r["fold"]} · '
+        f'TRUE: <b>{html.escape(r["true"])}</b> · pred: <b>{html.escape(r["pred"])}</b> '
+        f'{rank_html} · '
+        f'<span class="oov-tag" title="OOV vs this PUL\'s training fold vocab">'
+        f'OOV {r["oov_pct"]:.1f}% ({r["n_oov"]}/{r["n_tok"]})</span>'
+        f'</div>'
+        f'<div class="card-body">'
+        f'<div class="card-col"><div class="col-label">All 12 calibrated probabilities</div>'
+        f'<table class="mini-prob">{"".join(prob_rows)}</table></div>'
+        f'<div class="card-col"><div class="col-label">Top-5 signature genes (TRUE-class Δ, calibrated)</div>'
+        f'<div class="sig-row">{sig_html}</div>'
+        f'<details class="seq-details"><summary>PUL gene token sequence ({r["n_tok"]} tokens)</summary>'
+        f'<div class="seq-box">{_seq_html(r["tokens"], _oov_set_for_pul(r["idx"]))}</div></details>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+def _substrate_tab_html(class_name: str) -> str:
+    recs = [r for r in PUL_RECORDS if r["true"] == class_name]
+    if not recs: return f"<p>No test PULs for {class_name}.</p>"
+    # Sort recs: correct first (by descending prob_true), then wrong (by rank asc, then descending prob_true)
+    recs.sort(key=lambda r: (r["rank_true"], -r["prob_true"]))
+    n = len(recs)
+    top1 = sum(1 for r in recs if r["rank_true"] == 1) / n
+    top3 = sum(1 for r in recs if r["rank_true"] <= 3) / n
+    mean_oov = float(np.mean([r["oov_pct"] for r in recs]))
+    # Class summary banner
+    canon_list = sorted(canon.get(class_name, set()))
+    canon_html = ", ".join(f"<code>{html.escape(c)}</code>" for c in canon_list[:30])
+    if len(canon_list) > 30: canon_html += f" <span class='muted'>(+{len(canon_list)-30} more)</span>"
+    summary = (
+        f'<div class="sub-summary">'
+        f'<h2><span class="sub-dot" style="background:{SUB_COLORS.get(class_name, GRAY)}"></span>'
+        f'{html.escape(class_name)}</h2>'
+        f'<div class="stat-grid">'
+        f'<div class="stat"><div class="stat-label">test PULs</div><div class="stat-val">{n}</div></div>'
+        f'<div class="stat"><div class="stat-label">top-1 acc</div><div class="stat-val">{top1:.3f}</div></div>'
+        f'<div class="stat"><div class="stat-label">top-3 acc</div><div class="stat-val">{top3:.3f}</div></div>'
+        f'<div class="stat"><div class="stat-label">mean OOV %</div><div class="stat-val">{mean_oov:.2f}%</div></div>'
+        f'<div class="stat"><div class="stat-label">lit-canonical CAZy</div><div class="stat-val">{len(canon_list)}</div></div>'
+        f'</div>'
+        f'<div class="canon-strip"><b>Literature canon (after alias collapse):</b> {canon_html}</div>'
+        f'<p class="hint">PULs sorted: correct (rank 1) first, then rank-2/3 redemptions, then misses (rank &gt; 3). '
+        f'Click "<i>PUL gene token sequence</i>" inside any card to expand the full token list with OOV highlighting.</p>'
+        f'</div>'
+    )
+    cards = "".join(_pul_compact_card(r) for r in recs)
+    return summary + cards
+
+
+# ---------------------------------------------------------------------------
+# Compose the final HTML
+# ---------------------------------------------------------------------------
+print("[per-pul-report] composing HTML ...")
+
+CSS = """
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+       margin: 0; background: #f6f7f9; color: #2c3e50; }
+.page { max-width: 1280px; margin: 0 auto; padding: 0 24px 60px; }
+header { background: #1a3a5c; color: white; padding: 24px 40px; }
+header h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+header .sub { color: #c7d6e3; font-size: 13px; }
+header .meta { color: #a3b8cc; font-size: 12px; margin-top: 8px; }
+nav { position: sticky; top: 0; background: white; border-bottom: 2px solid #1a3a5c;
+      padding: 8px 24px; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      overflow-x: auto; white-space: nowrap; }
+nav button { background: none; border: 1px solid transparent; border-radius: 8px;
+             padding: 8px 14px; margin: 0 2px; cursor: pointer; font-size: 13px;
+             color: #2c3e50; font-weight: 500; transition: all 0.12s; }
+nav button:hover { background: #ecf0f1; }
+nav button.active { background: #1a3a5c; color: white; border-color: #1a3a5c; }
+nav .nav-count { font-size: 11px; opacity: 0.7; margin-left: 4px; }
+section.tab { display: none; padding-top: 20px; }
+section.tab.active { display: block; }
+.intro { background: white; padding: 18px 24px; border-radius: 8px;
+         border: 1px solid #d6dee5; margin-bottom: 24px; }
+.intro h2 { margin-top: 0; color: #1a3a5c; font-size: 18px; }
+.intro p { font-size: 13.5px; line-height: 1.6; margin: 8px 0; }
+.demo-section { margin-bottom: 28px; }
+.demo-section h3 { color: #1a3a5c; font-size: 16px; margin: 0 0 8px;
+                   padding-bottom: 4px; border-bottom: 1px solid #d6dee5; }
+.pul-card { background: white; border: 1px solid #d6dee5; border-radius: 8px;
+            padding: 16px 20px; margin-bottom: 18px; }
+.pul-card-head { font-size: 13px; margin-bottom: 10px; display: flex;
+                 justify-content: space-between; align-items: center; gap: 12px;
+                 flex-wrap: wrap; }
+.pul-card-head .meta-line { font-size: 12px; color: #7f8c8d; }
+.prob-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.prob-table thead th { background: #f0f3f6; color: #1a3a5c; font-weight: 700;
+                       padding: 6px 10px; text-align: left; border-bottom: 1px solid #d6dee5; }
+.prob-table tbody td { padding: 4px 10px; border-bottom: 1px solid #f0f3f6; vertical-align: middle; }
+.prob-table .row-true { background: #d4edda; }
+.prob-table .row-pred:not(.row-true) { background: #fef5e7; }
+.sub-cell .sub-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+                     margin-right: 6px; vertical-align: middle; }
+.flag-true, .flag-pred { display: inline-block; font-size: 9.5px; font-weight: 700;
+                         padding: 1px 5px; border-radius: 3px; margin-left: 6px;
+                         vertical-align: middle; }
+.flag-true { background: #155724; color: white; }
+.flag-pred { background: #856404; color: white; }
+.bar-wrap { position: relative; display: inline-block; height: 14px;
+            background: #e8eced; border-radius: 3px; vertical-align: middle; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
+            min-width: 1px; opacity: 0.75; }
+.bar-num { position: absolute; left: 50%; top: -1px; transform: translateX(-50%);
+           font-size: 10.5px; font-weight: 700; color: #1a1a1a; mix-blend-mode: difference;
+           color: white; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.muted { color: #95a5a6; font-style: italic; font-size: 11px; }
+.rank { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 700;
+        font-size: 11px; margin-left: 6px; vertical-align: middle; }
+.rank-1 { background: #d4edda; color: #155724; }
+.rank-2 { background: #fff3cd; color: #856404; }
+.rank-3 { background: #fde2cf; color: #7d4209; }
+.rank-bad { background: #f5b7b1; color: #6e2820; }
+.ok-badge { background: #155724; color: white; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 700; margin-left: 6px; }
+.bad-badge { background: #6e2820; color: white; padding: 2px 8px; border-radius: 4px;
+             font-size: 11px; font-weight: 700; margin-left: 6px; }
+.sig-chip { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 4px;
+            margin: 2px 3px 2px 0; border: 1px solid; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.sig-chip .dlt { color: rgba(0,0,0,0.55); font-weight: 400; font-size: 10px; margin-left: 4px; }
+.badge-exact    { background: #d4edda; border-color: #28a745; color: #155724; }
+.badge-collapse { background: #e0f3e8; border-color: #6dbf86; color: #2d5e3a; }
+.badge-miss     { background: #f8d7da; border-color: #c0392b; color: #721c24; }
+.badge-non      { background: #ecf0f1; border-color: #95a5a6; color: #4a5961; }
+/* Per-substrate tab styles */
+.sub-summary { background: white; padding: 18px 24px; border-radius: 8px;
+               border: 1px solid #d6dee5; margin-bottom: 18px; }
+.sub-summary h2 { margin: 0 0 12px; font-size: 22px; color: #1a3a5c; }
+.sub-summary .sub-dot { display: inline-block; width: 14px; height: 14px;
+                        border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 10px; }
+.stat { background: #f6f7f9; padding: 8px 12px; border-radius: 6px; text-align: center; }
+.stat-label { font-size: 10.5px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-val { font-size: 19px; font-weight: 700; color: #1a3a5c; margin-top: 2px; }
+.canon-strip { font-size: 12px; padding: 8px 0; border-top: 1px solid #f0f3f6;
+               border-bottom: 1px solid #f0f3f6; margin-top: 6px; line-height: 1.7; }
+.canon-strip code { background: #f0f3f6; padding: 1px 5px; border-radius: 3px;
+                    font-size: 11px; }
+.hint { font-size: 11px; color: #7f8c8d; margin: 10px 0 0; font-style: italic; }
+.card { background: white; border: 1px solid #d6dee5; border-left: 4px solid #ddd;
+        border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }
+.card-head { font-size: 12.5px; margin-bottom: 10px; }
+.card-idx { font-weight: 700; color: #1a3a5c; }
+.oov-tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 3px;
+           background: #ecf0f1; color: #4a5961; margin-left: 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.card-body { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+.col-label { font-size: 10.5px; color: #7f8c8d; text-transform: uppercase;
+             letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 700; }
+.mini-prob { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.mini-prob td { padding: 2px 6px; vertical-align: middle; }
+.mini-prob td:first-child { white-space: nowrap; }
+.mini-prob .row-true { background: #d4edda; font-weight: 600; }
+.sig-row { line-height: 2; }
+.seq-details { margin-top: 8px; font-size: 11px; }
+.seq-details summary { cursor: pointer; color: #1a3a5c; font-weight: 600; }
+.seq-box { padding: 8px 0 0; line-height: 1.8; }
+.seq { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; }
+.tok { display: inline-block; padding: 1px 5px; border-radius: 3px; margin: 1px 2px;
+       background: #ecf0f1; color: #4a5961; }
+.tok-cazy { background: #d6eaf8; color: #1f4e79; font-weight: 600; }
+.tok-oov  { background: #fadbd8; color: #6e2820; border: 1px dashed #c0392b; }
+.tok-norm { background: #ecf0f1; }
+"""
+
+JS = """
+function showTab(name) {
+  document.querySelectorAll('section.tab').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector('nav button[data-tab="' + name + '"]').classList.add('active');
+  window.scrollTo({top: 0, behavior: 'instant'});
+}
+document.addEventListener('DOMContentLoaded', () => showTab('overview'));
+"""
+
+# Tab nav
+substrate_counts = {s: sum(1 for r in PUL_RECORDS if r["true"] == s) for s in substrates}
+nav_buttons = ['<button data-tab="overview" onclick="showTab(\'overview\')">Overview</button>']
+for s in substrates:
+    safe = re.sub(r"[^a-z0-9]", "-", s.lower())
+    nav_buttons.append(
+        f'<button data-tab="{safe}" onclick="showTab(\'{safe}\')">{html.escape(s)}'
+        f'<span class="nav-count">({substrate_counts[s]})</span></button>'
+    )
+
+# Tab sections
+sections = [f'<section id="tab-overview" class="tab">{_overview_html()}</section>']
+for s in substrates:
+    safe = re.sub(r"[^a-z0-9]", "-", s.lower())
+    sections.append(f'<section id="tab-{safe}" class="tab">{_substrate_tab_html(s)}</section>')
+
+# Header stats
+n_pul = len(PUL_RECORDS)
+overall_top1 = sum(1 for r in PUL_RECORDS if r["rank_true"] == 1) / n_pul
+overall_top3 = sum(1 for r in PUL_RECORDS if r["rank_true"] <= 3) / n_pul
+mean_T = float(np.mean(T_per_fold))
+
+OUT_HTML.parent.mkdir(parents=True, exist_ok=True)
+OUT_HTML.write_text(f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>subFinder — per-PUL test-set report (rep_1, seed-42 5-fold OOF)</title>
+<style>{CSS}</style>
+</head>
+<body>
+<header>
+  <h1>subFinder — per-PUL test-set report</h1>
+  <div class="sub">All {n_pul} held-out PULs from the rep_1 seed-42 5-fold OOF run, with calibrated probabilities, p-values, signature genes, and literature-match badges.</div>
+  <div class="meta">Model: <code>cpu__ET500_log2</code> · temperature scaling, mean T = {mean_T:.3f} · top-1 OOF acc = {overall_top1:.4f} · top-3 OOF acc = {overall_top3:.4f}</div>
+</header>
+<nav>{"".join(nav_buttons)}</nav>
+<div class="page">
+{"".join(sections)}
+</div>
+<script>{JS}</script>
+</body>
+</html>
+""")
+print(f"[per-pul-report] wrote {OUT_HTML.relative_to(ROOT)} ({OUT_HTML.stat().st_size//1024} KB)")
+print(f"[per-pul-report] open in browser: file://{OUT_HTML}")
