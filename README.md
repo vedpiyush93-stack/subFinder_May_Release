@@ -22,7 +22,8 @@
 | Metric | Value | Source |
 |---|---:|---|
 | Test accuracy (rep_1, 5×5 RSKF, n=725) | **0.9066 ± 0.0174** | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
-| Cross-rep mean (3 reps complete) | **0.9066 ± 0.0002** | [`reproducibility/`](reproducibility/) |
+| **Cross-rep mean (5 reps × 25 trials, fixed splits)** | **0.9063 ± 0.0006** (range 0.9052–0.9068) | [`docs/tables/tab_cross_rep_stability.csv`](docs/tables/tab_cross_rep_stability.csv) |
+| Top-7 rank stability across 5 reps | **5/7 ranks identical** in every rep (single #6/#7 swap in rep_3) | [`docs/tables/tab_cross_rep_top7_ranking.csv`](docs/tables/tab_cross_rep_top7_ranking.csv) |
 | Top-3 cumulative accuracy | **0.976** | [`docs/tables/tab_rank_redemption.csv`](docs/tables/tab_rank_redemption.csv) |
 | High-confidence (≥0.8) accuracy | **97.4 %** on 67 % of PULs | [`docs/tables/tab_confidence_vs_correct.csv`](docs/tables/tab_confidence_vs_correct.csv) |
 | Gap vs paper BRF baseline | **+6.64 pp** (paired *t*, p ≈ 5×10⁻¹⁴) | [`paper/audit_output.txt`](paper/audit_output.txt) |
@@ -30,7 +31,9 @@
 | ECE (10-bin) after T-scaling | 0.094 → **0.029** | [`artifacts/calibration_report.csv`](artifacts/calibration_report.csv) |
 | Per-PUL sig-gene hit rate (TRUE-class, K=3) | **768/837 = 91.8 %** | [`paper/tables/`](paper/tables/) |
 
-**Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (24 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
+> **Model uncertainty in one number:** the winner's accuracy moves by ≤ 0.0016 across 5 independent re-trainings with different model-init seeds (`REPRO_REP_SEED=1000/2000/3000/4000/5000`, data splits held fixed). Per-family median cross-rep std: OvR(ExtraTrees) **0.0006** · OvR(BalancedRF) 0.0027 · DL families 0.0047–0.0064 — our shallow winner is 8–10× more reproducible than any DL baseline.
+
+**Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (25 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
 
 ---
 
@@ -40,8 +43,8 @@ There is **one** model: `cpu__ET500_log2`. Picked out of 29 candidates, calibrat
 
 ```mermaid
 flowchart TD
-    A[29 candidate configs] --> B["5×5 RSKF benchmark<br/>725 fits, 5 reproducibility reps"]
-    B --> C["<b>winner: cpu__ET500_log2</b><br/>0.9066 ± 0.0174 (rep_1)<br/>0.9066 ± 0.0002 across reps"]
+    A[29 candidate configs] --> B["5×5 RSKF benchmark<br/>725 fits × 5 reproducibility reps"]
+    B --> C["<b>winner: cpu__ET500_log2</b><br/>0.9066 ± 0.0174 (rep_1, n=25 trials)<br/>0.9063 ± 0.0006 across 5 reps"]
     C --> D["temperature scaling<br/>(inner-OOF on outer_tr — leak-free)<br/>mean T ≈ 0.70"]
     D --> E["<b>artifacts/final_model.pkl</b><br/>calibrated cpu__ET500_log2"]
     E --> F["inference on a new PUL<br/>predict_proba → ÷ T → softmax → argmax"]
@@ -115,6 +118,7 @@ python3 scripts/04_benchmark.py            # ~5 s   leaderboard.csv (29 rows)
 python3 scripts/05_calibrate_best.py       # ~30 s  calibration_report.csv (4 methods)
 python3 scripts/07_build_paper_artifacts.py # ~45 s  paper/tables/*.csv + audit_output.txt
 python3 scripts/10_build_case_studies.py   # ~5 s   docs/figures/fig11-13.png + tables
+python3 scripts/11_build_cross_rep_stability.py # ~3 s  docs/figures/fig14.png + cross-rep CSVs
 python3 scripts/08_build_static_deck.py    # ~30 s  docs/deck.pptx
 python3 scripts/09_build_interactive_deck.py # ~10 s  docs/deck.html
 
@@ -189,7 +193,7 @@ Vectors are bit-identical to the source uncompressed model — proven by `pytest
 subFinder_May_Release/
 ├── data/                    1,030 labeled PULs + curated CAZy↔substrate DB
 ├── src/                     library (preprocessing, embeddings, shallow, deep, calibration, ablation, inference)
-├── scripts/                 10 CLI drivers (01_train_embeddings → 10_build_case_studies)
+├── scripts/                 11 CLI drivers (01_train_embeddings → 11_build_cross_rep_stability)
 ├── notebooks/               build_paper_artifacts.ipynb (master end-to-end feeder)
 ├── artifacts/
 │   ├── predictions/         29 configs × 25 trials × {probs_test.npz, probs_train.npz, classifier.*, meta.json}
@@ -319,12 +323,12 @@ Reproduce the drift experiment: `python3 scripts/experiments/measure_t_drift.py 
 
 ## Decks
 
-24 slides each — same content in two formats:
+25 slides each — same content in two formats:
 
 - **[`docs/deck.pptx`](docs/deck.pptx)** — download to open in PowerPoint/Keynote
 - **[`docs/deck.html`](docs/deck.html)** — interactive Plotly (hover, zoom, keyboard arrows). Clone the repo and `open docs/deck.html` to view; GitHub's web viewer renders it as raw HTML.
 
-Includes 3 reviewer-impact slides: rank-K redemption, calibrated confidence vs correctness, 6 hand-picked PUL case studies.
+Includes 4 reviewer-impact slides: **cross-rep stability forest plot** (5 reps × 25 trials, fixed splits), rank-K redemption, calibrated confidence vs correctness, 6 hand-picked PUL case studies.
 
 ---
 

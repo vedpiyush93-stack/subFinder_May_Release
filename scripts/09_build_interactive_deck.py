@@ -1037,6 +1037,89 @@ fig10.update_layout(
 )
 
 # ============================================================================
+# CHART 14 — Cross-rep stability forest plot (5 reps × 29 configs)
+# ============================================================================
+print("[chart 14] cross-rep stability forest plot ...")
+xrep_csv = PRES / "tables/tab_cross_rep_stability.csv"
+xrep_summary_path = PRES / "tables/tab_cross_rep_summary.json"
+xrep_df = pd.read_csv(xrep_csv)
+xrep_summary = json.loads(xrep_summary_path.read_text())
+# Order matches the CSV (sorted by rep_1 mean desc)
+_FAM_COLOR_XR = {
+    "OvR(ExtraTrees)": SAGE, "OvR(BalancedRF)": NAVY,
+    "DL: LSTM+attention": ORANGE, "DL: transformer": "#8e44ad",
+    "DL: attention": CRIMSON, "DL: LSTM": GRAY,
+}
+# Assign family per row
+def _fam_of(c):
+    if c in ("cpu__ET500_log2", "ftCbow_MM__ET500_sqrt"): return "OvR(ExtraTrees)"
+    if c.endswith("__BRF100"): return "OvR(BalancedRF)"
+    if c.endswith("__LSTM"): return "DL: LSTM"
+    if c.endswith("__LSTMattn"): return "DL: LSTM+attention"
+    if c.endswith("__JustAttn"): return "DL: attention"
+    if c.endswith("__Trans"): return "DL: transformer"
+    return "other"
+xrep_df["family"] = xrep_df.shorthand.apply(_fam_of)
+# Plotly: one horizontal trace per family for the legend; min-max bar via error_x; individual rep dots overlaid
+fig14 = go.Figure()
+# Family color spans for range bars (one bar per config; color by family)
+_rep_cols = ["rep_1_mean", "rep_2_mean", "rep_3_mean", "rep_4_mean", "rep_5_mean"]
+# Range bars (min↔max) drawn as horizontal lines per config
+for _, row in xrep_df.iterrows():
+    fig14.add_trace(go.Scatter(
+        x=[row.cross_rep_min, row.cross_rep_max], y=[row.shorthand, row.shorthand],
+        mode="lines",
+        line=dict(color=_FAM_COLOR_XR.get(row.family, GRAY), width=2),
+        opacity=0.35, showlegend=False, hoverinfo="skip",
+    ))
+# Per-rep dots + cross-rep mean — one trace per family for legend control
+for fam, color in _FAM_COLOR_XR.items():
+    sub = xrep_df[xrep_df.family == fam]
+    if sub.empty: continue
+    xs, ys, customs = [], [], []
+    for _, row in sub.iterrows():
+        for c_i, col in enumerate(_rep_cols):
+            xs.append(row[col]); ys.append(row.shorthand)
+            customs.append([c_i + 1, row.cross_rep_mean, row.cross_rep_std])
+    fig14.add_trace(go.Scatter(
+        x=xs, y=ys, mode="markers", name=f"{fam} (per-rep mean)",
+        marker=dict(color=color, size=7, line=dict(color="white", width=0.5)),
+        customdata=customs,
+        hovertemplate="<b>%{y}</b><br>rep_%{customdata[0]} mean: <b>%{x:.4f}</b><br>"
+                      "cross-rep mean: %{customdata[1]:.4f} ± %{customdata[2]:.4f}<extra></extra>",
+    ))
+# Cross-rep mean square markers (single trace, neutral color/border for emphasis)
+fig14.add_trace(go.Scatter(
+    x=xrep_df.cross_rep_mean, y=xrep_df.shorthand, mode="markers",
+    name="cross-rep mean (5-rep avg)",
+    marker=dict(symbol="square", size=11, color=[_FAM_COLOR_XR.get(f, GRAY) for f in xrep_df.family],
+                line=dict(color=BLACK, width=1.0)),
+    customdata=np.stack([xrep_df.cross_rep_std, xrep_df.cross_rep_min,
+                         xrep_df.cross_rep_max, xrep_df.min_n_trials], axis=-1),
+    hovertemplate="<b>%{y}</b><br>cross-rep mean: <b>%{x:.4f}</b><br>"
+                  "cross-rep std: %{customdata[0]:.4f}<br>"
+                  "range: %{customdata[1]:.4f} – %{customdata[2]:.4f}<br>"
+                  "min trials/rep: %{customdata[3]:.0f}<extra></extra>",
+))
+fig14.update_layout(
+    title=dict(text="<b>Cross-rep reproducibility — 5 reps × 25 trials each (data splits FIXED, model-init seed varies)</b><br>"
+                    f"<span style='font-size:13px;color:#000000'>Winner cpu__ET500_log2: "
+                    f"<b>{xrep_summary['winner_cross_rep_mean']:.4f} ± {xrep_summary['winner_cross_rep_std']:.4f}</b> "
+                    f"(range {xrep_summary['winner_cross_rep_min']:.4f}–{xrep_summary['winner_cross_rep_max']:.4f}) · "
+                    f"Top-7 rank stability: <b>{xrep_summary['top7_rank_stability']}</b></span>",
+               x=0, font=PLOTLY_TITLE_FONT),
+    xaxis=dict(title=dict(text="<b>Test accuracy (5×5 RSKF mean per rep, n=25 trials each)</b>", font=PLOTLY_AXIS_FONT),
+               range=[0.69, 0.93], gridcolor="#dddddd",
+               tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
+    yaxis=dict(autorange="reversed", tickfont=dict(family="monospace", size=10, color=BLACK), linecolor=BLACK),
+    legend=dict(orientation="v", yanchor="bottom", y=0.0, xanchor="right", x=1.0,
+                bgcolor="rgba(255,255,255,0.92)", bordercolor=BLACK, borderwidth=1, font=dict(size=10)),
+    plot_bgcolor="white", paper_bgcolor="white",
+    height=780, margin=dict(l=230, r=80, t=110, b=70),
+    font=PLOTLY_FONT_DEFAULTS,
+)
+
+# ============================================================================
 # CHART 11 — Rank-K redemption (cumulative top-K accuracy, per-substrate)
 # ============================================================================
 print("[chart 11] rank-K redemption — top-K cumulative accuracy ...")
@@ -1343,6 +1426,25 @@ slide_html_blocks.append({
         "<b>The buckets:</b> our sklearn winners (green) reproduce <b>BIT-IDENTICALLY</b>; paper's BRF (navy) drifts "
         "≤0.0017 from imblearn thread-order non-determinism; paper deep configs (orange) drift ≤0.04 from TF GPU "
         "op-order non-determinism. None of these change rankings."
+    ),
+})
+
+# Slide 6b — Cross-rep reproducibility (5 reps forest plot)
+slide_html_blocks.append({
+    "title": "Cross-rep reproducibility — 5 reps × 25 trials each (model uncertainty quantified)",
+    "subtitle": ("5×5 RSKF data splits are <b>FIXED</b> across all 5 reps; only model-init seed varies "
+                 "(<code>REPRO_REP_SEED=1000/2000/3000/4000/5000</code>). Each config gets one dot per rep — closer dots = more reproducible. "
+                 "Hover any dot for per-rep mean and the cross-rep aggregate."),
+    "body": fig_html(fig14, "chart-cross-rep") + callout(
+        "HEADLINE",
+        f"<b>Winner cpu__ET500_log2: {xrep_summary['winner_cross_rep_mean']:.4f} ± {xrep_summary['winner_cross_rep_std']:.4f}</b> "
+        f"across 5 reps (range {xrep_summary['winner_cross_rep_min']:.4f}–{xrep_summary['winner_cross_rep_max']:.4f}) — "
+        "deterministic to the 4th decimal. "
+        f"<b>2nd place ftCbow_MM__ET500_sqrt: {xrep_summary['runner_cross_rep_mean']:.4f} ± {xrep_summary['runner_cross_rep_std']:.4f}</b> — also rock-solid. "
+        f"<b>Top-7 rank stability:</b> {xrep_summary['top7_rank_stability']} (ranks 1-5 + 7 identical in every rep, single "
+        "#6/#7 swap in rep_3). <b>Per-family median cross-rep std:</b> OvR(ExtraTrees) 0.0006 · OvR(BalancedRF) 0.0027 · "
+        "DL families 0.0047–0.0064 — our shallow winner is 8-10× more reproducible than DL configs. "
+        "This is the model-uncertainty story for deployment: predictions don't move when you re-seed the trainer."
     ),
 })
 

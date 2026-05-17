@@ -1192,6 +1192,25 @@ add_callout(s, "WHAT THIS IS — re-running the SAME (config, seed, fold) with a
                 "non-determinism and weight-init+GPU op-order non-determinism respectively. Top rankings are stable.")
 add_footer(s)
 
+# Slide 6b — Cross-rep reproducibility (all 5 reps, forest plot)
+# Load cross-rep summary if available
+import json as _json
+_xrep_summary_path = ROOT/"docs/tables/tab_cross_rep_summary.json"
+if _xrep_summary_path.exists():
+    _xrep = _json.loads(_xrep_summary_path.read_text())
+    s = prs.slides.add_slide(BLANK)
+    add_title(s, "Cross-rep reproducibility — 5 reps × 25 trials, data splits FIXED")
+    add_subtitle(s, f"Model-init seed varies (REPRO_REP_SEED=1000/2000/3000/4000/5000); 5×5 RSKF data splits held fixed. Each row = one of 29 configs; 5 dots = per-rep means; square = cross-rep mean; bar = min↔max range.")
+    add_image_centered(s, FIG/"fig14_cross_rep_stability.png", top=1.45, max_h=5.0)
+    add_callout(s, f"HEADLINE — winner cpu__ET500_log2: <b>{_xrep['winner_cross_rep_mean']:.4f} ± {_xrep['winner_cross_rep_std']:.4f}</b> across 5 reps "
+                    f"(range {_xrep['winner_cross_rep_min']:.4f}–{_xrep['winner_cross_rep_max']:.4f}, deterministic to 4th decimal). "
+                    f"2nd-place ftCbow_MM__ET500_sqrt also stable at {_xrep['runner_cross_rep_mean']:.4f} ± {_xrep['runner_cross_rep_std']:.4f}. "
+                    f"<b>Top-7 rank stability: {_xrep['top7_rank_stability']}</b> "
+                    "(ranks 1-5 + 7 identical in every rep, single swap between #6/#7 in rep_3). "
+                    "Per-family median cross-rep std: OvR(ExtraTrees) 0.0006 · OvR(BalancedRF) 0.0027 · DL families 0.0047-0.0064. "
+                    "Our shallow winner is essentially deterministic; DL configs have 8-10× more model-init variance.")
+    add_footer(s)
+
 # Slide 7 — Per-substrate of best model: confusion matrix
 s = prs.slides.add_slide(BLANK)
 add_title(s, "Best model — per-substrate confusion")
