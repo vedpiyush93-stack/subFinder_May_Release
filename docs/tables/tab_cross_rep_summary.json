@@ -23,6 +23,6 @@
   "runner_cross_rep_mean": 0.9007,
   "runner_cross_rep_std": 0.0006,
   "top7_rank_stability": "5/7 ranks identical across all 5 reps",
-  "n_configs_min_n_25": 21,
-  "n_configs_partial": 8
+  "n_configs_min_n_25": 29,
+  "n_configs_partial": 0
 }
