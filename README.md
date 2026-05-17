@@ -36,6 +36,8 @@
 **Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (25 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
 **Want to browse every individual test PUL?** Open [`docs/per_pul_report.html`](docs/per_pul_report.html) — 13 tabs (overview + one per substrate), every test PUL with full calibrated probabilities, p-values, signature genes, literature-match badges, and per-fold OOV.
 
+**Want to see what the deployed model says about *unlabeled* PULs?** Open [`unravel/unravel_report.html`](unravel/unravel_report.html) — 358,751 unique PULs from the unsupervised pre-training corpus run through the deployed model. A 3-step common-sense filter (token count → ≥1 CAZy → ≤10% OOV) keeps 108,700 PULs in the in-distribution regime where supervised accuracy is known to be ≥ 91 %; of those, **5,446 land in the HIGH-confidence tier** (≥ 0.80 calibrated, supervised acc ≈ 97 %). Same per-PUL card layout as the test-set report, minus the TRUE label (it doesn't exist) — metrics shown are filter-based quality proxies.
+
 ---
 
 ## How the pipeline works (1 minute)
