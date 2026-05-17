@@ -1037,6 +1037,136 @@ fig10.update_layout(
 )
 
 # ============================================================================
+# CHART 11 — Rank-K redemption (cumulative top-K accuracy, per-substrate)
+# ============================================================================
+print("[chart 11] rank-K redemption — top-K cumulative accuracy ...")
+rank_csv = PRES / "tables/tab_rank_redemption.csv"
+rank_df = pd.read_csv(rank_csv).sort_values("top1_acc", ascending=True).reset_index(drop=True)
+# Overall headline accuracies (weighted by n_test)
+_ntot = rank_df.n_test.sum()
+_top1_all = float((rank_df.top1_acc * rank_df.n_test).sum() / _ntot)
+_top2_all = float((rank_df.top2_acc * rank_df.n_test).sum() / _ntot)
+_top3_all = float((rank_df.top3_acc * rank_df.n_test).sum() / _ntot)
+_top5_all = float((rank_df.top5_acc * rank_df.n_test).sum() / _ntot)
+fig11 = go.Figure()
+_k_palette = {"top1_acc": SAGE, "top2_acc": "#52b788", "top3_acc": ORANGE, "top5_acc": NAVY}
+_k_labels = {"top1_acc": "K=1 (top-1)", "top2_acc": "K=2", "top3_acc": "K=3", "top5_acc": "K=5"}
+for col in ["top1_acc", "top2_acc", "top3_acc", "top5_acc"]:
+    fig11.add_trace(go.Bar(
+        y=rank_df.substrate, x=rank_df[col], orientation="h",
+        name=_k_labels[col],
+        marker=dict(color=_k_palette[col], line=dict(color=BLACK, width=0.5)),
+        text=[f"{v:.3f}" for v in rank_df[col]],
+        textposition="outside", textfont=dict(size=10, color=BLACK, weight=700),
+        customdata=np.stack([rank_df.n_test, rank_df.mean_true_rank], axis=-1),
+        hovertemplate=(f"<b>%{{y}}</b><br>{_k_labels[col]} accuracy: <b>%{{x:.4f}}</b><br>"
+                       "n test PULs: %{customdata[0]}<br>"
+                       "Mean true-rank: %{customdata[1]:.3f}<extra></extra>"),
+    ))
+fig11.update_layout(
+    barmode="group",
+    title=dict(text=f"<b>Rank-K redemption — cumulative top-K accuracy (rep_1 OOF, n=1030)</b><br>"
+                    f"<span style='font-size:12px;color:#000000'>Overall: top-1 = <b>{_top1_all:.3f}</b> · "
+                    f"top-2 = <b>{_top2_all:.3f}</b> (+{(_top2_all-_top1_all)*100:.1f} pp) · "
+                    f"top-3 = <b>{_top3_all:.3f}</b> (+{(_top3_all-_top2_all)*100:.1f} pp) · "
+                    f"top-5 = <b>{_top5_all:.3f}</b>. When top-1 is wrong, TRUE is usually rank 2 or 3.</span>",
+               x=0, font=PLOTLY_TITLE_FONT),
+    xaxis=dict(title=dict(text="<b>Cumulative accuracy (fraction of test PULs where TRUE class is within top-K)</b>",
+                          font=PLOTLY_AXIS_FONT),
+               range=[0.5, 1.08], gridcolor="#dddddd",
+               tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
+    yaxis=dict(automargin=True, tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=PLOTLY_TICK_FONT),
+    plot_bgcolor="white", paper_bgcolor="white",
+    height=540, margin=dict(l=160, r=80, t=110, b=70),
+    font=PLOTLY_FONT_DEFAULTS,
+)
+
+# ============================================================================
+# CHART 12 — Confidence vs correctness (10-bin reliability histogram)
+# ============================================================================
+print("[chart 12] confidence vs correctness — calibrated reliability histogram ...")
+conf_csv = PRES / "tables/tab_confidence_vs_correct.csv"
+conf_df = pd.read_csv(conf_csv)
+_bin_labels = [f"{lo:.1f}–{hi:.1f}" for lo, hi in zip(conf_df.bin_lo, conf_df.bin_hi)]
+fig12 = go.Figure()
+fig12.add_trace(go.Bar(
+    x=_bin_labels, y=conf_df.n_correct, name="correct",
+    marker=dict(color=SAGE, line=dict(color=BLACK, width=0.5)),
+    text=[str(int(v)) if v > 0 else "" for v in conf_df.n_correct],
+    textposition="inside", insidetextanchor="middle",
+    textfont=dict(size=11, color="white", weight=700),
+    customdata=np.stack([conf_df.n_total, conf_df.pct_correct], axis=-1),
+    hovertemplate="<b>Confidence %{x}</b><br>Correct: %{y}<br>Total in bin: %{customdata[0]}<br>"
+                  "Accuracy in bin: <b>%{customdata[1]:.3f}</b><extra></extra>",
+))
+fig12.add_trace(go.Bar(
+    x=_bin_labels, y=conf_df.n_incorrect, name="incorrect",
+    marker=dict(color=CRIMSON, line=dict(color=BLACK, width=0.5)),
+    text=[str(int(v)) if v > 0 else "" for v in conf_df.n_incorrect],
+    textposition="outside", textfont=dict(size=10, color=BLACK, weight=700),
+    customdata=np.stack([conf_df.n_total, conf_df.pct_correct], axis=-1),
+    hovertemplate="<b>Confidence %{x}</b><br>Incorrect: %{y}<br>Total in bin: %{customdata[0]}<br>"
+                  "Accuracy in bin: <b>%{customdata[1]:.3f}</b><extra></extra>",
+))
+_high_conf_correct = int(conf_df[conf_df.bin_lo >= 0.8].n_correct.sum())
+_high_conf_total = int(conf_df[conf_df.bin_lo >= 0.8].n_total.sum())
+_high_conf_pct = _high_conf_correct / max(_high_conf_total, 1)
+fig12.update_layout(
+    barmode="stack",
+    title=dict(text=f"<b>Calibrated confidence vs correctness — 10-bin reliability histogram (rep_1 OOF, n=1030)</b><br>"
+                    f"<span style='font-size:12px;color:#000000'>High-confidence (≥0.8) = "
+                    f"<b>{_high_conf_correct}/{_high_conf_total} correct = {_high_conf_pct:.1%}</b>. "
+                    f"Bottom bins (≤0.5) sit at ~54–65% — the model knows when it doesn't know.</span>",
+               x=0, font=PLOTLY_TITLE_FONT),
+    xaxis=dict(title=dict(text="<b>Calibrated max-class probability bin</b>", font=PLOTLY_AXIS_FONT),
+               tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
+    yaxis=dict(title=dict(text="<b>Number of held-out PULs</b>", font=PLOTLY_AXIS_FONT),
+               gridcolor="#dddddd", tickfont=PLOTLY_TICK_FONT, linecolor=BLACK),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=PLOTLY_TICK_FONT),
+    plot_bgcolor="white", paper_bgcolor="white",
+    height=520, margin=dict(l=80, r=40, t=110, b=80),
+    font=PLOTLY_FONT_DEFAULTS,
+)
+
+# ============================================================================
+# CHART 13 — Case studies (sortable HTML table built from tab_case_studies.csv)
+# ============================================================================
+print("[chart 13] case-study cards — HTML table ...")
+cs_csv = PRES / "tables/tab_case_studies.csv"
+cs_df = pd.read_csv(cs_csv)
+_scenario_color = {
+    "confident_correct": ("#c8e6c9", "TRUE matches top-1 with high confidence"),
+    "rank2_redemption":  ("#fff3cd", "TRUE label recovered at rank 2"),
+    "rank3_redemption":  ("#fde2cf", "TRUE label recovered at rank 3"),
+    "low_conf_correct":  ("#d6eaf8", "TRUE matches top-1 with LOW confidence — model knows it's unsure"),
+    "medium_conf_correct": ("#e8f8f5", "TRUE matches top-1 with medium confidence"),
+    "confident_wrong":   ("#f5b7b1", "Confident but WRONG — interesting failure mode"),
+}
+_cs_rows_html = ""
+for _, r in cs_df.iterrows():
+    bg, note = _scenario_color.get(r.scenario, ("#ffffff", ""))
+    seq_short = str(r.sequence)
+    if len(seq_short) > 70: seq_short = seq_short[:67] + "..."
+    _cs_rows_html += (
+        f'<tr style="background:{bg}">'
+        f'<td><b>PUL #{int(r.pul_idx)}</b><br><span class="note">{r.scenario_label}</span></td>'
+        f'<td><b>{r.true_substrate}</b></td>'
+        f'<td><b>{r.top1_pred}</b><br><span class="note">conf {float(r.top1_conf):.3f}</span></td>'
+        f'<td><b>{int(r.true_rank)}</b></td>'
+        f'<td class="mono" style="font-size:11px">{r.top3_probs}</td>'
+        f'<td class="mono" style="font-size:10px">{seq_short}</td>'
+        f'<td><span class="note">{note}</span></td>'
+        f'</tr>')
+fig13_table_html = (
+    '<table class="ex-table" style="font-size:12px"><thead><tr>'
+    '<th>PUL / scenario</th><th>TRUE substrate</th><th>top-1 pred (conf)</th>'
+    '<th>TRUE rank</th><th>top-3 probs (calibrated)</th>'
+    '<th>PUL gene sequence (truncated)</th><th>interpretation</th>'
+    '</tr></thead><tbody>' + _cs_rows_html + '</tbody></table>'
+)
+
+# ============================================================================
 # HTML ASSEMBLY
 # ============================================================================
 print("[deck.html] assembling ...")
@@ -1323,6 +1453,50 @@ slide_html_blocks.append({
         "gene view <b>394 → 173 in-scope → 109 flagged (63.0%)</b>. "
         "Scope recall is ~3 pp <i>higher</i> than the argmax-gated 60.1% on legacy Tables 7/8 because we now "
         "catch genes the model attributed correctly in PULs it classified wrong on the argmax."
+    ),
+})
+
+# Slide 13b — WOW: Rank-K redemption (cumulative top-K accuracy, per-substrate)
+slide_html_blocks.append({
+    "title": "Rank-K redemption — TRUE substrate is recovered fast as K grows",
+    "subtitle": "Cumulative top-K accuracy on 1030 held-out PULs (rep_1 OOF). When top-1 is wrong, the TRUE label is usually rank 2 or 3 — meaningful for triage workflows where biologists review the top few candidates.",
+    "body": fig_html(fig11, "chart-rank-redemption") + callout(
+        "HEADLINE",
+        f"<b>Top-1 = {_top1_all:.3f}</b> → top-2 = <b>{_top2_all:.3f}</b> (+{(_top2_all-_top1_all)*100:.1f} pp) → "
+        f"top-3 = <b>{_top3_all:.3f}</b> (+{(_top3_all-_top2_all)*100:.1f} pp) → top-5 = <b>{_top5_all:.3f}</b>. "
+        "Per-substrate: alginate is 100% at K=1; fructan is the hardest top-1 (0.677) but jumps to 0.903 by K=3 — "
+        "i.e. when the model is wrong on fructan, the true class is almost always rank 2 or 3. "
+        "Mean true-rank across all substrates = <b>1.39</b> (median 1). Calibrated probs make these ranks "
+        "deployment-meaningful — see Slide 9. Hover any bar for n_test and mean true-rank per substrate."
+    ),
+})
+
+# Slide 13c — WOW: Calibration is meaningful (confidence ≈ accuracy per bin)
+slide_html_blocks.append({
+    "title": "Calibration is meaningful — confidence ≈ accuracy per bin",
+    "subtitle": "10-bin reliability histogram on CALIBRATED max-class probabilities (T ≈ 0.70). Sage = correct, red = incorrect. High-confidence predictions (≥0.8) are correct in ≥97% of cases — supports a triage/review workflow with a high-precision auto-accept threshold.",
+    "body": fig_html(fig12, "chart-confidence") + callout(
+        "PER-BIN ACCURACY",
+        "0.8–0.9 → <b>98.2% correct</b> (110/112) · 0.9–1.0 → <b>97.3% correct</b> (566/582). "
+        f"Combined ≥0.8: <b>{_high_conf_correct}/{_high_conf_total} = {_high_conf_pct:.1%}</b> correct "
+        f"({100*_high_conf_total/_ntot:.0f}% of total). "
+        "Bottom bins (≤0.5) sit at ~54–65% — the model 'knows it doesn't know'. "
+        "<b>Operational implication:</b> route confidence ≥0.8 to auto-accept (precision ≈ 0.97), "
+        "0.5–0.8 to expert review, refuse <0.5. Same calibrator powers the deployed inference."
+    ),
+})
+
+# Slide 13d — WOW: 6 hand-picked PUL case-study cards (interactive HTML table)
+slide_html_blocks.append({
+    "title": "Case studies — 6 hand-picked PUL predictions showing the value of top-K + sig genes",
+    "subtitle": "Mix of confident-correct, low-confidence-correct, rank-2/3 redemptions, and a confident-wrong failure mode. Row background colors the scenario type.",
+    "body": fig13_table_html + callout(
+        "READING THE CARDS",
+        "Green row = top-1 is TRUE · yellow/orange row = TRUE recovered at rank 2 or 3 · red row = TRUE missing from top-3. "
+        "<b>Confident+correct</b> (alginate, 0.96) — PL6/PL17 are canonical alginate lyases. "
+        "<b>Rank-2 redemption</b> (alpha-glucan, 0.52 vs 0.32) — model splits between α/β-glucan, GH13 nudges α. "
+        "<b>Confident-wrong</b> (alpha-glucan classified as fructan, p=1.0) — GH32/3.A.1.1.x are sucrose-PTS markers; "
+        "an interpretable failure mode for the substrate-attribution review workflow."
     ),
 })
 

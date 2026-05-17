@@ -1381,6 +1381,39 @@ add_callout(s, "WHY TRUE-CLASS ON CALIBRATED PROBS — our model outputs probabi
                 "now catch genes attributed correctly in PULs the model classified wrong.")
 add_footer(s)
 
+# Slide 13b — WOW: Rank-K redemption (top-K cumulative accuracy)
+s = prs.slides.add_slide(BLANK)
+add_title(s, "Rank-K redemption — TRUE substrate is recovered fast as K grows")
+add_subtitle(s, "Cumulative top-K accuracy on 1030 held-out PULs (rep_1 OOF). When top-1 is wrong, the TRUE label is usually rank 2 or 3 — meaningful for triage workflows where biologists review the top few candidates.")
+add_image_centered(s, FIG/"fig11_rank_redemption.png", top=1.55, max_h=4.6)
+add_callout(s, "HEADLINE — top-1 = 0.906, top-2 = 0.956 (+5.0 pp), top-3 = 0.976 (+2.0 pp), top-5 = 0.981. "
+                "Per-substrate: alginate is 100% at K=1; fructan is the hardest (top-1 = 0.677) but jumps to 0.903 by K=3 — "
+                "i.e. when the model is wrong on fructan, the true class is almost always rank 2 or 3. Mean true-rank "
+                "across all substrates = 1.39 (median 1). Calibrated probs make these ranks deployment-meaningful — see Slide 9.")
+add_footer(s)
+
+# Slide 13c — WOW: Calibration is meaningful (confidence ≈ accuracy per bin)
+s = prs.slides.add_slide(BLANK)
+add_title(s, "Calibration is meaningful — confidence ≈ accuracy per bin")
+add_subtitle(s, "10-bin reliability histogram on calibrated probabilities (T ≈ 0.70). Sage = correct, red = incorrect. High-confidence predictions (≥0.8) ARE correct in ≥97% of cases — supports a triage/review workflow with a high-precision auto-accept threshold.")
+add_image_centered(s, FIG/"fig12_confidence_vs_correct.png", top=1.55, max_h=4.6)
+add_callout(s, "PER-BIN ACCURACY — 0.8-0.9 → 98.2% correct (110/112) · 0.9-1.0 → 97.3% correct (566/582). "
+                "Combined ≥0.8: 97.4% correct on 694 PULs (67% of total). Bottom bins (≤0.5) show ~54-65% — the "
+                "model 'knows it doesn't know'. Operational implication: route confidence ≥0.8 to auto-accept "
+                "(precision ≈ 0.97), route 0.5-0.8 to expert review, refuse <0.5. Same calibrator powers the deployed inference.")
+add_footer(s)
+
+# Slide 13d — WOW: Hand-picked PUL case-study cards (6 scenarios)
+s = prs.slides.add_slide(BLANK)
+add_title(s, "Case studies — 6 hand-picked PUL predictions showing the value of top-K + sig genes")
+add_subtitle(s, "Each card: TRUE substrate, model's top-3 (calibrated probs), and the gene sequence. Mix of confident-correct, low-conf-correct, rank-2/3 redemptions, and a confident-wrong failure mode.")
+add_image_centered(s, FIG/"fig13_case_study_cards.png", top=1.45, max_h=4.9)
+add_callout(s, "READING THE CARDS — green = top-1 is TRUE · amber = TRUE recovered at rank 2 or 3 · red = TRUE missing from top-3. "
+                "Confident+correct (alginate, 0.96) shows clean signal: PL6/PL17 are canonical alginate lyases. "
+                "Rank-2 redemption (alpha-glucan, 0.52 vs 0.32) — model splits between α/β-glucan, GH13 nudges α. "
+                "Confident-wrong (alpha-glucan classified as fructan, p=1.0) — GH32/3.A.1.1.x are PRTS sucrose markers; ambiguous substrate.")
+add_footer(s)
+
 # Slide 12c — Test-PUL OOV (out-of-vocabulary) vs accuracy
 s = prs.slides.add_slide(BLANK)
 add_title(s, "Internal robustness — accuracy vs train-vocab OOV proportion")

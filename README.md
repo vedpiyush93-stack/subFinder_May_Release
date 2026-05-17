@@ -205,7 +205,14 @@ python3 scripts/07_build_paper_artifacts.py
 #  →  paper/tables/*.csv  (12 tables)
 #  →  paper/audit_output.txt  (every numeric claim, key → value)
 
-# 5. (optional) Run the master notebook for the slow/fancy bits ↓
+# 5. Regenerate the 3 "wow" case-study visuals (~5 s)
+python3 scripts/10_build_case_studies.py
+#  →  docs/figures/fig11_rank_redemption.png       (top-1=0.906 → top-3=0.976 by substrate)
+#  →  docs/figures/fig12_confidence_vs_correct.png (calibrated 10-bin reliability)
+#  →  docs/figures/fig13_case_study_cards.png      (6 hand-picked PUL cards)
+#  →  docs/tables/tab_{rank_redemption,confidence_vs_correct,case_studies}.csv
+
+# 6. (optional) Run the master notebook for the slow/fancy bits ↓
 jupyter nbconvert --to notebook --execute --inplace notebooks/build_paper_artifacts.ipynb
 ```
 
@@ -454,7 +461,7 @@ subFinder_May_Release/
 ├── requirements.txt
 ├── data/                    1,030 labeled PULs + curated CAZy ↔ substrate DB
 ├── src/                     library code (preprocessing, embeddings, shallow, deep, calibration, ablation, lit_validation, inference)
-├── scripts/                 9 CLI drivers (01_train_embeddings → 09_build_interactive_deck)
+├── scripts/                 10 CLI drivers (01_train_embeddings → 10_build_case_studies)
 ├── notebooks/               build_paper_artifacts.ipynb (master end-to-end feeder)
 ├── artifacts/
 │   ├── predictions/         29 configs × 25 trials × {meta.json, probs_test.npz, probs_train.npz}   [shipped, ~30 MB]
@@ -475,7 +482,7 @@ subFinder_May_Release/
 
 ## Decks
 
-Two views of the same content, **21 slides each**:
+Two views of the same content, **24 slides each** (including 3 "wow" reviewer-impact slides — rank-K redemption, calibrated confidence vs correctness, and 6 hand-picked PUL case studies):
 
 - **Static PowerPoint:** [`docs/deck.pptx`](docs/deck.pptx) — clickable in the browser file viewer; download to open in Keynote/PowerPoint.
 - **Interactive Plotly HTML:** [`docs/deck.html`](docs/deck.html) — Plotly charts with hover tooltips, click-legend filtering, and keyboard arrow navigation. **GitHub renders this as raw HTML inside the repo viewer.** To see the rendered deck: clone the repo and open `docs/deck.html` in your browser:
@@ -487,9 +494,10 @@ Two views of the same content, **21 slides each**:
   # or: xdg-open docs/deck.html (linux), start docs/deck.html (windows)
   ```
 
-Regenerate both decks anytime from the cached artifacts:
+Regenerate decks + case-study visuals anytime from the cached artifacts:
 
 ```bash
+python3 scripts/10_build_case_studies.py       # ~5 s   → docs/figures/fig11-13.png + docs/tables/tab_*.csv
 python3 scripts/08_build_static_deck.py        # ~30 s  → docs/deck.pptx
 python3 scripts/09_build_interactive_deck.py   # ~10 s  → docs/deck.html
 ```

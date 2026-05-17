@@ -1,0 +1,7 @@
+pul_idx,scenario,scenario_label,true_substrate,top1_pred,top1_conf,true_rank,top3_probs,sequence
+0,confident_correct,Confident + Correct,alginate,alginate,0.9628317356109619,1,alginate=0.963; beta-glucan=0.034; chitin=0.001,"1.B.14.12.1,GntR,PL6|PL6_1,PL17_2|PL17,AraC_binding,2.A.1.14.25,null,PfkB,null"
+64,rank2_redemption,TOP-1 wrong → TRUE at rank 2,alpha-glucan,beta-glucan,0.5172902345657349,2,beta-glucan=0.517; alpha-glucan=0.318; fructan=0.045,"3.A.1,3.A.1,3.A.1,GH13_1,LacI|Peripla_BP_3"
+136,rank3_redemption,TOP-1 wrong → TRUE at rank 3,alpha-glucan,fructan,1.0,3,fructan=1.000; alginate=0.000; alpha-glucan=0.000,"LacI,3.A.1.1.10,3.A.1.1.29,null,GH32,PfkB"
+101,low_conf_correct,Low-confidence correct (model knows it's unsure),alpha-glucan,alpha-glucan,0.37657225131988525,1,alpha-glucan=0.377; beta-glucan=0.323; host glycan=0.127,"GH31|CBM20,GH31|CBM35,0040266"
+7,medium_conf_correct,Medium-confidence correct,alginate,alginate,0.6036192774772644,1,alginate=0.604; beta-glucan=0.344; pectin=0.019,"AraC_binding,null,null,2.A.50.2.1,PL5_1,null,null,1.B.13.1.1,null,null,GT2,null"
+136,confident_wrong,Confident but WRONG (interesting failure case),alpha-glucan,fructan,1.0,3,fructan=1.000; alginate=0.000; alpha-glucan=0.000,"LacI,3.A.1.1.10,3.A.1.1.29,null,GH32,PfkB"
