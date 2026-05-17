@@ -38,6 +38,8 @@ sys.path.insert(0, str(ROOT))
 from src.preprocessing.tokenizers import tok_cpu
 from src.lit_validation.canon import build_canon
 from src.splits import rskf_splits
+from src.ablation.leave_one_token_out import ablate_pul_for_class
+import joblib
 
 OUT_HTML = ROOT / "docs" / "per_pul_report.html"
 
@@ -277,7 +279,8 @@ def _pul_full_form(r: dict) -> str:
     correct_badge = ('<span class="ok-badge">✓ correct top-1</span>' if is_correct
                      else f'<span class="bad-badge">✗ TRUE at rank {r["rank_true"]}</span>')
     rows = []
-    for sub, p in r["ranked"]:
+    per_class_ablation = ABLATION_FOR_DEMO.get(r["idx"], {})
+    for rank_pos, (sub, p) in enumerate(r["ranked"], start=1):
         color = SUB_COLORS.get(sub, GRAY)
         pval = p_value_dirichlet_uniform(p)
         is_true = (sub == r["true"])
@@ -285,14 +288,23 @@ def _pul_full_form(r: dict) -> str:
         flags = []
         if is_true: flags.append('<span class="flag-true">TRUE</span>')
         if is_pred: flags.append('<span class="flag-pred">argmax</span>')
-        # Sig genes for this row: only shown for TRUE-class (sig_true) or argmax-class (sig_argmax)
-        sig_html = ""
-        if is_true and r["sig_true"]:
+        # Sig genes for this row: prefer the on-the-fly per-class ablation we
+        # computed for the top-3 (+TRUE); fall back to the cached argmax/TRUE
+        # csv data; finally, a clear "not computed" note for low-prob rows.
+        if sub in per_class_ablation and per_class_ablation[sub]:
+            sig_html = _sig_genes_html(sub, per_class_ablation[sub])
+            sig_note = ""
+        elif is_true and r["sig_true"]:
             sig_html = _sig_genes_html(sub, r["sig_true"])
+            sig_note = ""
         elif is_pred and r["sig_argmax"]:
             sig_html = _sig_genes_html(sub, r["sig_argmax"])
+            sig_note = ""
         else:
-            sig_html = '<span class="muted">(not cached for this class)</span>'
+            sig_html = (f'<span class="muted">not computed (prob ≈ {p:.3f} — '
+                        f'ablation is skipped for low-rank classes; rerun '
+                        f'<code>ablate_pul_for_class(..., class_name=\"{sub}\")</code> for this row)</span>')
+            sig_note = ""
         row_cls = "row-true" if is_true else ("row-pred" if is_pred else "")
         rows.append(
             f'<tr class="{row_cls}">'
@@ -342,26 +354,77 @@ def _pick_demo_puls() -> list[dict]:
 DEMO_PULS = _pick_demo_puls()
 print(f"[per-pul-report] selected {len(DEMO_PULS)} demo PULs for Overview tab")
 
+# For the Overview tab demos, ablation is cached only for argmax + TRUE classes
+# (those are the headline use-cases). Compute it on-the-fly for the top-3 ranked
+# classes too so the 12-row prediction form has sig genes for every plausible class.
+print(f"[per-pul-report] computing top-3 per-class ablation for {len(DEMO_PULS)} demo PULs ...")
+ABLATION_FOR_DEMO: dict[int, dict[str, list[tuple[str, float]]]] = {}
+_pipeline_cache: dict[int, object] = {}
+for d in DEMO_PULS:
+    r = d["rec"]
+    fold = r["fold"]
+    if fold not in _pipeline_cache:
+        clf_path = ROOT / f"artifacts/predictions/cpu__ET500_log2/r42_f{fold}/classifier.joblib"
+        if clf_path.exists():
+            _pipeline_cache[fold] = joblib.load(clf_path)
+        else:
+            print(f"  WARN: no classifier.joblib at {clf_path.relative_to(ROOT)}")
+            _pipeline_cache[fold] = None
+    pipeline = _pipeline_cache[fold]
+    if pipeline is None:
+        ABLATION_FOR_DEMO[r["idx"]] = {}
+        continue
+    T_fold = float(T_per_fold[fold])
+    per_class: dict[str, list[tuple[str, float]]] = {}
+    # ablate top-3 ranked classes + ensure TRUE class is included
+    targets = {r["ranked"][0][0], r["ranked"][1][0], r["ranked"][2][0], r["true"]}
+    for cls in targets:
+        try:
+            per_class[cls] = ablate_pul_for_class(pipeline, r["sequence"], cls,
+                                                  top_k=5, apply_temp=T_fold)
+        except Exception as e:
+            print(f"  WARN: ablation failed for PUL {r['idx']} class {cls}: {e}")
+            per_class[cls] = []
+    ABLATION_FOR_DEMO[r["idx"]] = per_class
+print(f"  computed ablation for {sum(len(v) for v in ABLATION_FOR_DEMO.values())} (PUL, class) cells")
+
+
 def _overview_html() -> str:
     intro = (
         '<div class="intro">'
-        '<h2>How to read these reports</h2>'
+        '<h2>Overview — how to read this report</h2>'
         '<p>Every PUL is run through the deployed calibrated model '
-        '(<code>cpu__ET500_log2</code>, mean T ≈ 0.70) and gets a probability distribution '
-        'over all 12 substrate classes. Below are <b>6 hand-picked test PULs</b> shown in '
-        '<i>full prediction form</i>: one row per substrate, sorted by descending calibrated '
-        'probability, with the p-value under a uniform-Dirichlet null and the leave-one-token-out '
-        'signature genes (cached for the TRUE class and the argmax class only).</p>'
+        f'(<code>cpu__ET500_log2</code>, mean T = {float(np.mean(T_per_fold)):.3f}) and gets a '
+        'probability distribution over all 12 substrate classes. The probabilities are '
+        '<b>temperature-calibrated</b> (per-fold T on inner-CV5 — see paper §3.2), so they are '
+        'safe to use as confidence values, not just rankings.</p>'
+        '<p>Below are <b>6 hand-picked test PULs</b> in <i>full prediction form</i>: '
+        'one row per substrate, sorted by descending calibrated probability. Columns: '
+        '<b>substrate</b> · <b>calibrated prob</b> (with mini-bar) · '
+        '<b>p-value</b> (uniform-Dirichlet null) · '
+        '<b>signature genes for THAT substrate</b> '
+        '(leave-one-token-out Δ on the calibrated probabilities). For the top-3 classes the '
+        'sig-gene ablation is computed on-the-fly per row; for the bottom 9 (prob ≈ 0 — model is '
+        'essentially ignoring them) the ablation is skipped since Δ is uninformative.</p>'
         '<p>Use the <b>per-substrate tabs above</b> to browse every test PUL grouped by ground-truth '
-        'class — useful for inspecting, e.g., "every test PUL whose TRUE substrate is fructan."</p>'
-        '<p><b>Legend</b>: '
+        'class — useful for, e.g., "show me every test PUL whose TRUE substrate is fructan and '
+        'whether the model got each one right".</p>'
+        '<div class="legend-inline">'
+        '<div><b>Rank badges:</b> '
         '<span class="ok-badge">✓ correct top-1</span> '
-        '<span class="bad-badge">✗ TRUE at rank N</span> '
-        '<span class="sig-chip badge-exact"><b>GH13</b></span> literature canonical (exact match) · '
-        '<span class="sig-chip badge-collapse"><b>GH16</b></span> literature canonical (via alias collapse) · '
-        '<span class="sig-chip badge-miss"><b>GH99</b></span> CAZy but not in lit canon for this class · '
-        '<span class="sig-chip badge-non"><b>LacI</b></span> non-CAZy regulator/transporter.'
-        '</p>'
+        '<span class="bad-badge">✗ TRUE at rank N</span></div>'
+        '<div><b>Row highlighting:</b> '
+        '<span style="background:#d4edda;padding:1px 6px;border-radius:3px">green = TRUE row</span> '
+        '<span style="background:#fef5e7;padding:1px 6px;border-radius:3px">amber = argmax row</span></div>'
+        '<div><b>Signature gene badges</b> (what kind of token it is, vs. literature canon for that row\'s substrate):'
+        '<br><span class="sig-chip badge-exact"><b>GH13</b></span>literature canonical, 1:1 exact match in lit DB'
+        ' &nbsp;·&nbsp; <span class="sig-chip badge-collapse"><b>GH16</b></span>literature canonical via alias collapse '
+        '(e.g. starch → α-glucan)'
+        ' &nbsp;·&nbsp; <span class="sig-chip badge-miss"><b>GH99</b></span>CAZy family but not in lit canon for that class'
+        ' &nbsp;·&nbsp; <span class="sig-chip badge-non"><b>LacI</b></span>non-CAZy gene (regulator / transporter / etc.)'
+        '</div>'
+        '<div><b>Δ</b> = drop in calibrated probability when that token is removed (positive = the model depended on it for that class).</div>'
+        '</div>'
         '</div>'
     )
     cards = []
@@ -378,7 +441,8 @@ def _pul_compact_card(r: dict) -> str:
     """Compact card showing one test PUL within a substrate's tab.
 
     Layout: header bar (TRUE | pred | rank | OOV); 12-row prob mini-table sorted by prob;
-    sig genes row; collapsible sequence.
+    sig genes row (always TRUE-class; argmax-class also shown when prediction was wrong);
+    collapsible sequence.
     """
     is_correct = r["pred"] == r["true"]
     rank_html = _rank_badge(r["rank_true"])
@@ -394,7 +458,30 @@ def _pul_compact_card(r: dict) -> str:
             f'<tr class="{cls}"><td>{marker} {html.escape(sub)}</td>'
             f'<td>{_prob_bar(p, color, width_px=130)}</td></tr>'
         )
-    sig_html = _sig_genes_html(r["true"], r["sig_true"])
+    # Sig-gene attribution — be EXPLICIT about which class each set attributes to.
+    # TRUE-class sig genes are always shown ("what would have pushed the model
+    # toward the right answer"). For incorrect predictions, also show argmax-class
+    # sig genes ("what the model actually used to make its wrong call").
+    sig_true_html = _sig_genes_html(r["true"], r["sig_true"])
+    true_block = (
+        f'<div class="sig-block">'
+        f'<div class="sig-block-label">'
+        f'Δ for <b>TRUE</b> class = <code>{html.escape(r["true"])}</code> '
+        f'<span class="sig-hint">(what would have pushed toward the right answer)</span></div>'
+        f'<div class="sig-row">{sig_true_html}</div>'
+        f'</div>'
+    )
+    pred_block = ""
+    if not is_correct:
+        sig_pred_html = _sig_genes_html(r["pred"], r["sig_argmax"])
+        pred_block = (
+            f'<div class="sig-block sig-block-wrong">'
+            f'<div class="sig-block-label">'
+            f'Δ for <b>predicted (wrong)</b> class = <code>{html.escape(r["pred"])}</code> '
+            f'<span class="sig-hint">(what the model latched onto for its wrong call)</span></div>'
+            f'<div class="sig-row">{sig_pred_html}</div>'
+            f'</div>'
+        )
     return (
         f'<div class="card" style="border-left-color:{border_color}">'
         f'<div class="card-head">'
@@ -405,15 +492,43 @@ def _pul_compact_card(r: dict) -> str:
         f'OOV {r["oov_pct"]:.1f}% ({r["n_oov"]}/{r["n_tok"]})</span>'
         f'</div>'
         f'<div class="card-body">'
-        f'<div class="card-col"><div class="col-label">All 12 calibrated probabilities</div>'
+        f'<div class="card-col"><div class="col-label">All 12 calibrated probabilities (TRUE = ★)</div>'
         f'<table class="mini-prob">{"".join(prob_rows)}</table></div>'
-        f'<div class="card-col"><div class="col-label">Top-5 signature genes (TRUE-class Δ, calibrated)</div>'
-        f'<div class="sig-row">{sig_html}</div>'
+        f'<div class="card-col">'
+        f'<div class="col-label">Signature genes — leave-one-token-out Δ on calibrated probs</div>'
+        f'{true_block}{pred_block}'
         f'<details class="seq-details"><summary>PUL gene token sequence ({r["n_tok"]} tokens)</summary>'
         f'<div class="seq-box">{_seq_html(r["tokens"], _oov_set_for_pul(r["idx"]))}</div></details>'
         f'</div>'
         f'</div>'
         f'</div>'
+    )
+
+def _legend_strip() -> str:
+    """Compact legend that explains the rank badges + sig-gene badges. Reused per tab
+    so any tab is self-contained."""
+    return (
+        '<div class="legend">'
+        '<div class="legend-row">'
+        '<span class="legend-label">Rank-of-TRUE badge:</span> '
+        '<span class="rank rank-1">#1 ✓</span> top-1 was correct &nbsp;·&nbsp; '
+        '<span class="rank rank-2">#2</span> TRUE was rank 2 &nbsp;·&nbsp; '
+        '<span class="rank rank-3">#3</span> rank 3 &nbsp;·&nbsp; '
+        '<span class="rank rank-bad">#4+</span> TRUE missed top-3'
+        '</div>'
+        '<div class="legend-row">'
+        '<span class="legend-label">Signature-gene badge:</span> '
+        '<span class="sig-chip badge-exact"><b>GH13</b></span> literature canonical (1:1 exact match in lit DB) &nbsp;·&nbsp; '
+        '<span class="sig-chip badge-collapse"><b>GH16</b></span> literature canonical via alias collapse (e.g. starch → α-glucan) &nbsp;·&nbsp; '
+        '<span class="sig-chip badge-miss"><b>GH99</b></span> CAZy family but not in lit canon for this class &nbsp;·&nbsp; '
+        '<span class="sig-chip badge-non"><b>LacI</b></span> non-CAZy gene (regulator / transporter)'
+        '</div>'
+        '<div class="legend-row legend-row-small">'
+        'Δ = drop in calibrated probability when that token is removed (positive = the model relies on it). '
+        'TRUE-class sig genes are always shown; for incorrect predictions, the argmax-class sig genes are also shown so you can see both '
+        '"what would have helped" and "what the model actually used".'
+        '</div>'
+        '</div>'
     )
 
 def _substrate_tab_html(class_name: str) -> str:
@@ -425,6 +540,7 @@ def _substrate_tab_html(class_name: str) -> str:
     top1 = sum(1 for r in recs if r["rank_true"] == 1) / n
     top3 = sum(1 for r in recs if r["rank_true"] <= 3) / n
     mean_oov = float(np.mean([r["oov_pct"] for r in recs]))
+    n_wrong = sum(1 for r in recs if r["pred"] != r["true"])
     # Class summary banner
     canon_list = sorted(canon.get(class_name, set()))
     canon_html = ", ".join(f"<code>{html.escape(c)}</code>" for c in canon_list[:30])
@@ -433,16 +549,32 @@ def _substrate_tab_html(class_name: str) -> str:
         f'<div class="sub-summary">'
         f'<h2><span class="sub-dot" style="background:{SUB_COLORS.get(class_name, GRAY)}"></span>'
         f'{html.escape(class_name)}</h2>'
+        f'<p class="tab-intro">'
+        f'Every test PUL whose <b>TRUE substrate is {html.escape(class_name)}</b> '
+        f'({n} PULs total from rep_1 seed-42 5-fold OOF). Each card shows the model\'s '
+        f'12-class calibrated probability vector, the rank of the TRUE class, and the top-5 '
+        f'signature genes attributing to <b>{html.escape(class_name)}</b> '
+        f'(plus the predicted class on wrong calls).'
+        f'</p>'
         f'<div class="stat-grid">'
         f'<div class="stat"><div class="stat-label">test PULs</div><div class="stat-val">{n}</div></div>'
         f'<div class="stat"><div class="stat-label">top-1 acc</div><div class="stat-val">{top1:.3f}</div></div>'
         f'<div class="stat"><div class="stat-label">top-3 acc</div><div class="stat-val">{top3:.3f}</div></div>'
+        f'<div class="stat"><div class="stat-label">mispredicted</div><div class="stat-val">{n_wrong}/{n}</div></div>'
         f'<div class="stat"><div class="stat-label">mean OOV %</div><div class="stat-val">{mean_oov:.2f}%</div></div>'
         f'<div class="stat"><div class="stat-label">lit-canonical CAZy</div><div class="stat-val">{len(canon_list)}</div></div>'
         f'</div>'
         f'<div class="canon-strip"><b>Literature canon (after alias collapse):</b> {canon_html}</div>'
-        f'<p class="hint">PULs sorted: correct (rank 1) first, then rank-2/3 redemptions, then misses (rank &gt; 3). '
-        f'Click "<i>PUL gene token sequence</i>" inside any card to expand the full token list with OOV highlighting.</p>'
+        f'</div>'
+        + _legend_strip() +
+        f'<div class="sort-note">'
+        f'<b>Card order:</b> rank-1 (correct) first, then rank-2/3 (TRUE recovered in top-3), '
+        f'then rank ≥ 4 (TRUE missed top-3). Border color: '
+        f'<span class="border-sample" style="border-left-color:{SAGE}">green = #1</span> &nbsp;'
+        f'<span class="border-sample" style="border-left-color:{AMBER}">amber = #2/#3</span> &nbsp;'
+        f'<span class="border-sample" style="border-left-color:{RED}">red = #4+</span>. '
+        f'Click "<i>PUL gene token sequence</i>" inside any card to expand the full token list '
+        f'with OOV tokens highlighted in red.'
         f'</div>'
     )
     cards = "".join(_pul_compact_card(r) for r in recs)
@@ -564,6 +696,30 @@ section.tab.active { display: block; }
 .tok-cazy { background: #d6eaf8; color: #1f4e79; font-weight: 600; }
 .tok-oov  { background: #fadbd8; color: #6e2820; border: 1px dashed #c0392b; }
 .tok-norm { background: #ecf0f1; }
+/* Per-tab intro + legend bars */
+.tab-intro { font-size: 13px; line-height: 1.55; color: #34495e; margin: 6px 0 12px; }
+.legend { background: #fbfcfd; border: 1px solid #d6dee5; border-left: 3px solid #1a3a5c;
+          border-radius: 6px; padding: 10px 14px; margin: 0 0 14px; font-size: 12px; }
+.legend-row { padding: 3px 0; line-height: 2.0; }
+.legend-row-small { font-size: 11.5px; color: #5a6c7d; padding-top: 6px;
+                    border-top: 1px solid #ecf0f1; margin-top: 4px; line-height: 1.5; }
+.legend-label { font-weight: 700; color: #1a3a5c; margin-right: 8px; }
+.legend-inline { background: #f6f7f9; padding: 10px 14px; border-radius: 6px;
+                 border-left: 3px solid #1a3a5c; font-size: 12px; line-height: 1.9; }
+.legend-inline div { margin: 4px 0; }
+.sort-note { background: #fffbea; border: 1px solid #ecddb0; border-radius: 6px;
+             padding: 8px 12px; margin: 0 0 14px; font-size: 11.5px; color: #6e5a18; }
+.border-sample { display: inline-block; border-left: 4px solid; padding: 1px 6px;
+                 background: white; border-radius: 2px; font-size: 11px; }
+/* Sig-gene blocks (TRUE vs predicted attribution) */
+.sig-block { padding: 6px 0; }
+.sig-block + .sig-block { border-top: 1px dashed #ecf0f1; margin-top: 6px; }
+.sig-block-label { font-size: 11px; color: #34495e; margin-bottom: 4px; }
+.sig-block-label code { background: #ecf0f1; padding: 1px 5px; border-radius: 3px;
+                        font-size: 11px; }
+.sig-hint { color: #95a5a6; font-style: italic; font-size: 10.5px; margin-left: 4px; }
+.sig-block-wrong .sig-block-label { color: #6e2820; }
+.sig-block-wrong .sig-block-label code { background: #fadbd8; color: #6e2820; }
 """
 
 JS = """
