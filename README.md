@@ -36,7 +36,26 @@
 **Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (25 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
 **Want to browse every individual test PUL?** Open [`docs/per_pul_report.html`](docs/per_pul_report.html) — 13 tabs (overview + one per substrate), every test PUL with full calibrated probabilities, p-values, signature genes, literature-match badges, and per-fold OOV.
 
-**Want to see what the deployed model says about *unlabeled* PULs?** Open [`unravel/unravel_report.html`](unravel/unravel_report.html) — 358,751 unique PULs from the unsupervised pre-training corpus run through the deployed model. A 3-step common-sense filter (token count → ≥1 CAZy → ≤10% OOV) keeps 108,700 PULs in the in-distribution regime where supervised accuracy is known to be ≥ 91 %; of those, **5,446 land in the HIGH-confidence tier** (≥ 0.80 calibrated, supervised acc ≈ 97 %). Same per-PUL card layout as the test-set report, minus the TRUE label (it doesn't exist) — metrics shown are filter-based quality proxies.
+**Want to see what the deployed model says about *unlabeled* PULs?** Browse the [`unravel/`](unravel/) folder — 358,751 unique PULs from the unsupervised pre-training corpus run through the deployed model, with **350,349 evaluable** (token-count + ≥1-CAZy filter; OOV is no longer a hard filter, it's a slider).
+
+Entry point: [`unravel/index.html`](unravel/index.html) (Overview tab) → per-substrate page links → live filters / sort / histograms / trust-calibrator score on every PUL.
+
+Each substrate page (e.g. `unravel/alpha-glucan.html`) shows:
+- **Live filter bar** — tier checkboxes, confidence ≥ X, out-of-vocab ≤ Y, Jaccard agreement, trust ≥ Z, hide-extrapolation, asc/desc sort dropdown
+- **Live histograms** of confidence / out-of-vocab / token count that redraw as you filter
+- **Trust calibrator panel** — a logistic regression learned on 8,240 multi-CV samples (5×5 RSKF + k=3 × 3 seeds) that predicts P(correct | features). Reports per-feature p-values, odds ratios, and recommended cutoffs. Each PUL row has a trust score + an extrapolation badge if any feature is outside the supervised [P1, P99] range.
+- **Per-PUL rows** with sequence preview (first 12 tokens, click for full), 12 calibrated probability bars, top-5 signature genes with literature-match badges, and the 3 most similar labeled PULs (Jaccard top-3 retrieval).
+
+**Reviewer regeneration** (the heavy HTMLs are ~50–140 MB each so `beta-glucan.html`, `host-glycan.html`, and the all-in-one `unravel_report.html` are `.gitignore`'d — rebuild locally):
+
+```bash
+bash unravel/run_unravel.sh                                # ~4 min (350K PULs, all-cores n_jobs=-1)
+python3 unravel/filtering/build_trust_calibrator.py        # ~2 min (multi-CV trust regression)
+python3 unravel/filtering/apply_trust_to_unravel.py        # ~30 s (scores each PUL + injects UI)
+bash unravel/unravel_status.sh                              # live progress monitor
+```
+
+All committed scripts/JSONs live in [`unravel/filtering/`](unravel/filtering/) for full reproducibility.
 
 ---
 
