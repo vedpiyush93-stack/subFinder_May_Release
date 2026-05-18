@@ -1741,6 +1741,32 @@ slide_html_blocks.append({
 """
 })
 
+# Slide A5 — POST-HOC v2 REFINEMENT (additive, doesn't replace original)
+slide_html_blocks.append({
+    "title": "Post-hoc refinement · v2 tokenizer for cross-domain generalization",
+    "subtitle": ("After applying the deployed model to the 358,751-PUL unsupervised pre-training corpus, "
+                 "we found OOV was driven by token <b>format</b> mismatches, not biology. "
+                 "Two-line tokenizer change closes the gap — original deployed model is preserved unchanged."),
+    "body": """
+<table class="data-table" style="width:100%;margin-bottom:18px">
+<thead><tr>
+<th>metric</th><th>original (tok_cpu)</th><th>v2 refinement</th><th>Δ</th>
+</tr></thead><tbody>
+<tr><td><b>5-rep cross-rep mean acc</b> (full 5×5 RSKF × 5 seeds = 125 fits each)</td><td>0.9063 ± 0.0006</td><td><b>0.9145 ± 0.0005</b></td><td style="color:#27ae60;font-weight:700">+0.82 pp ✓</td></tr>
+<tr><td>Improved in every rep (5/5)</td><td>—</td><td><b>5/5</b></td><td style="color:#27ae60;font-weight:700">consistent ✓</td></tr>
+<tr><td>Deployed vocab size</td><td>517</td><td><b>306</b></td><td style="color:#27ae60;font-weight:700">41% smaller ✓</td></tr>
+<tr><td>Unsupervised mean OOV %</td><td>21.79%</td><td><b>5.36%</b></td><td style="color:#27ae60;font-weight:700">4× lower ✓</td></tr>
+<tr><td>Unsupervised PULs at OOV ≤ 10% (trust band)</td><td>37.2%</td><td><b>77.5%</b></td><td style="color:#27ae60;font-weight:700">+40 pp ✓</td></tr>
+<tr><td>Unsupervised PULs at OOV ≤ 25%</td><td>71.2%</td><td><b>96.2%</b></td><td style="color:#27ae60;font-weight:700">+25 pp ✓</td></tr>
+</tbody></table>
+<div class="callout"><span class="callout-label">WHAT v2 DOES (two lines)</span>
+<b>(1) Truncate Transporter Classification numbers to 2-level family</b> — <code>1.B.14.6.1</code> → <code>1.B</code>. The supervised corpus mixes 5-level and 3-level TCs; the unsupervised has only 3-level. Truncation closes the format gap without losing substrate-relevant biology (TC numbers are transporter accessory genes, not the substrate-discriminating signal).<br><br>
+<b>(2) Augment CAZy tokens with family-only fallback in concat</b> — <code>GH13</code> → keep <code>GH13</code> AND add <code>GH</code>. Novel families like <code>AA17</code> (never seen in supervised) now still pattern-match against <code>AA</code>. Specific tokens still match exactly — no info lost. Only 6 new tokens added to vocab (the 6 family prefixes).</div>
+<div class="callout" style="background:#d4edda"><span class="callout-label">ADDITIVE — ORIGINAL MODEL UNCHANGED</span>
+Original deployed bundle (<code>artifacts/final_model.pkl</code> + <code>reproducibility/rep_*/final_model.pkl</code>) preserved as the default and shipped via Git LFS. The v2 model bundle is <b>also shipped in-repo</b>, no LFS needed: each pkl is saved with <code>joblib.dump(..., compress=("xz", 6))</code>, which shrinks it from ~144 MB to ~20 MB (~120 MB total across all 6), under GitHub's 100 MB per-file limit. <code>joblib.load()</code> auto-decompresses, so inference code is unchanged. Deterministic regeneration: <code>scripts/13_train_tc2_refinement.py</code> + <code>scripts/13b_run_tc2_reproducibility.py</code> (~90 s/rep). 13-strategy sweep: <code>unravel/experiments/run_token_strategies.py</code>. Sig-gene attribution in <code>unravel/</code> visually separates "signature tokens" (numbered, specific) from "signature families" (augmented fallback).</div>
+"""
+})
+
 # Slide 15 — take home
 slide_html_blocks.append({
     "title": "Take-home",

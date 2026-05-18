@@ -83,3 +83,16 @@ artifacts/embeddings_cache/*/*_model/*.xz.tmp
 artifacts/embeddings_cache/**/*.npy.part
 # Wakeup-pipeline stash backups (only useful locally for rollback)
 artifacts/_passAB_backup_*/
+
+# ---------------------------------------------------------------------------
+# v2 tokenizer refinement (May 2026) — model bundles ARE shipped in-repo.
+# The 6 v2 pkls (artifacts/final_model_v2.pkl + rep_*_v2/final_model.pkl) are
+# joblib-saved with compress=("xz",6), shrinking them from 144 MB to ~20 MB each
+# (~120 MB total). They are tracked via regular git (no LFS). joblib.load()
+# auto-decompresses, so inference code does not change.
+# Regenerate from scratch with:
+#   python3 scripts/13_train_tc2_refinement.py        # → artifacts/final_model_v2.pkl
+#   python3 scripts/13b_run_tc2_reproducibility.py    # → rep_*_v2/final_model.pkl
+# Original deployed model (artifacts/final_model.pkl, rep_*/final_model.pkl)
+# remains tracked via Git LFS and is the default.
+# ---------------------------------------------------------------------------

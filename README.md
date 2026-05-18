@@ -344,6 +344,43 @@ Reproduce the drift experiment: `python3 scripts/experiments/measure_t_drift.py 
 
 ---
 
+## Post-hoc refinement (May 2026) — `v2` tokenizer for cross-domain generalization
+
+After applying the deployed model to the 358,751-PUL unsupervised pre-training corpus (see [`unravel/`](unravel/)), we noticed many unsupervised PULs were flagged as **out-of-vocabulary (OOV)** even though they shared the same underlying biology with supervised PULs. Root cause: **format mismatches** between the two corpora:
+
+- **TC numbers** — supervised data uses a mix of 5-level (`1.B.14.6.1`) and 3-level (`1.B.14`) formats; the unsupervised corpus has **only** 3-level. So `1.B.14.6.1` in a supervised PUL never matches any unsupervised PUL, even though it represents the same transporter biology.
+- **CAZy subfamilies** — supervised never saw `AA17`, `CBM50`, etc., so those novel families in unsupervised PULs become OOV with no fallback.
+
+We swept 13 token-transformation strategies on the **same winning config** (`cpu__ET500_log2` = CountVec + OvR-ExtraTrees-500). The winner is a tokenizer we call **`tok_cpu_v2`** that:
+
+1. **Truncates TC numbers to 2-level family** (`1.B.14.6.1` → `1.B`) — closes the format gap.
+2. **Augments CAZy tokens with family-only fallback** (`GH13` → keep `GH13` AND add `GH`) — gives novel CAZy families a fallback match.
+
+| | original `tok_cpu` | refined `tok_cpu_v2` | Δ |
+|---|---:|---:|---:|
+| **5-rep cross-rep mean ± std** (full 5×5 RSKF × 5 seeds) | **0.9063 ± 0.0006** | **0.9145 ± 0.0005** | **+0.82 pp** ✓ |
+| Per-rep means | 0.9066 / 0.9068 / 0.9064 / 0.9064 / 0.9052 | **0.9150 / 0.9151 / 0.9142 / 0.9142 / 0.9140** | every rep higher |
+| Deployed vocab size | 517 | **306** | 41% smaller ✓ |
+| Unsupervised mean OOV | 21.79% | **5.36%** | **4× lower** ✓ |
+| Unsup PULs in trust band (OOV ≤ 10%) | 37.2% | **77.5%** | **+40 pp** ✓ |
+| Unsup PULs at OOV ≤ 25% | 71.2% | **96.2%** | **+25 pp** ✓ |
+
+**Additive — original deployed model unchanged:** the refinement ships as a SEPARATE artifact [`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl); the original [`artifacts/final_model.pkl`](artifacts/final_model.pkl) is preserved and remains the default. Both versions are bundled in-repo and ready to use:
+
+```bash
+# original (default)
+python3 scripts/06_inference.py --seq "GH13,CBM6|null" --pretty
+
+# refined (better for novel PULs)
+python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13,CBM6|null" --pretty
+```
+
+**Self-contained distribution.** The 6 v2 model bundles ([`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl) + [`reproducibility/rep_{1..5}_v2/final_model.pkl`](reproducibility/)) are saved with `joblib.dump(..., compress=("xz", 6))`, which shrinks each from 144 MB to **~20 MB** (~120 MB total across all 6) and stays well under GitHub's 100 MB per-file limit — so they're tracked via regular git, **no LFS**. Loading is transparent: `joblib.load("artifacts/final_model_v2.pkl")` auto-detects the xz wrapper and decompresses on read, so no inference code changes. The full 5-rep stability suite (5 reps × 5×5 RSKF = 125 fits) is also regenerable from scratch in ~90 s/rep via `scripts/13_train_tc2_refinement.py` + `scripts/13b_run_tc2_reproducibility.py`; aggregate stats live in [`reproducibility/v2_cross_rep_summary.json`](reproducibility/v2_cross_rep_summary.json).
+
+**Strategy sweep documentation:** [`unravel/experiments/`](unravel/experiments/) contains the full 13-strategy comparison, dimensionality analysis, and `report.md` with the rationale. Sig-gene tokens in `unravel/` reports now visually separate **specific tokens** (numbered, e.g. `GH13`) from **family-augmented fallbacks** (e.g. `GH`) so reviewers can see exactly which signal came from which.
+
+---
+
 ## Decks
 
 25 slides each — same content in two formats:

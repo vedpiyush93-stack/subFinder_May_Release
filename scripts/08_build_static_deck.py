@@ -1615,6 +1615,57 @@ for i in range(1, nr):
             for run in para.runs: run.font.size = Pt(9); run.font.color.rgb = CHARCOAL_RGB
 add_footer(s, "Detailed citations in paper/reference.bib; codified as ALIAS_PROVENANCE in presentations/build_slides.py")
 
+# Slide A5 — POST-HOC REFINEMENT: v2 tokenizer for cross-domain generalization
+s = prs.slides.add_slide(BLANK)
+add_title(s, "Post-hoc refinement · v2 tokenizer for cross-domain generalization")
+add_subtitle(s, "After applying the deployed model to 358,751 unsupervised PULs we found OOV was driven by FORMAT mismatches, not biology. Two-line tokenizer change closes the gap.")
+# Centered comparison table
+tt = s.shapes.add_table(7, 4, Inches(0.6), Inches(1.55), Inches(12.0), Inches(2.5)).table
+hdr = ["metric", "original (tok_cpu)", "v2 refinement", "Δ"]
+for j, h in enumerate(hdr):
+    c = tt.cell(0, j); c.text = h; c.fill.solid(); c.fill.fore_color.rgb = NAVY_RGB
+    for para in c.text_frame.paragraphs:
+        for run in para.runs: run.font.size = Pt(12); run.font.bold = True; run.font.color.rgb = RGBColor(0xff,0xff,0xff)
+rows = [
+    ("5-rep cross-rep mean acc",   "0.9063 ± 0.0006",  "0.9145 ± 0.0005",  "+0.82 pp ✓"),
+    ("Every rep improved",          "—",                 "5/5",              "consistent ✓"),
+    ("Deployed vocab size",         "517",               "306",              "41% smaller ✓"),
+    ("Unsup mean OOV %",            "21.79%",            "5.36%",            "4× lower ✓"),
+    ("Unsup PULs at OOV ≤ 10%",     "37.2%",             "77.5%",            "+40 pp ✓"),
+    ("Unsup PULs at OOV ≤ 25%",     "71.2%",             "96.2%",            "+25 pp ✓"),
+]
+for i, row in enumerate(rows, start=1):
+    for j, v in enumerate(row):
+        c = tt.cell(i, j); c.text = str(v); c.fill.solid()
+        c.fill.fore_color.rgb = RGBColor(0xff,0xff,0xff) if i%2 else LIGHT_RGB
+        for para in c.text_frame.paragraphs:
+            for run in para.runs:
+                run.font.size = Pt(11); run.font.color.rgb = CHARCOAL_RGB
+                if j == 3 and i > 0: run.font.bold = True; run.font.color.rgb = SAGE_RGB
+
+# Add a callout box
+callout_tx = s.shapes.add_textbox(Inches(0.6), Inches(4.0), Inches(12.0), Inches(2.7))
+tf = callout_tx.text_frame; tf.word_wrap = True
+p = tf.paragraphs[0]; p.alignment = PP_ALIGN.LEFT
+r = p.add_run(); r.text = "What v2 does (two lines): "
+r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = NAVY_RGB
+r = p.add_run(); r.text = ("(1) Truncate Transporter Classification numbers to 2-level family — `1.B.14.6.1` → `1.B`. "
+                            "The supervised corpus mixes 5-level and 3-level TCs; the unsupervised has only 3-level. "
+                            "Truncation closes the format gap without losing biology (TC numbers are transporter accessory genes, not the substrate-discriminating signal). "
+                            "(2) Augment CAZy tokens with family-only fallback in concat — `GH13` → keep `GH13` AND add `GH`. "
+                            "Novel families like `AA17` (never seen in supervised) now still pattern-match against `AA`. Specific tokens still match exactly — no info lost.")
+r.font.size = Pt(11); r.font.color.rgb = CHARCOAL_RGB
+p = tf.add_paragraph(); p.alignment = PP_ALIGN.LEFT; p.space_before = Pt(8)
+r = p.add_run(); r.text = "Additive — original deployed model unchanged: "
+r.font.size = Pt(11); r.font.bold = True; r.font.color.rgb = SAGE_RGB
+r = p.add_run(); r.text = ("Original deployed bundle (`artifacts/final_model.pkl` + per-rep) preserved as default (shipped via Git LFS). "
+                            "v2 bundle (6 × ~20 MB after `joblib(compress=xz)`, ~120 MB total) ships in-repo via regular git, no LFS. "
+                            "joblib.load auto-decompresses — no inference-code change. "
+                            "Rebuild from scratch in ~90 s/rep with `scripts/13_*.py`. "
+                            "Strategy sweep: `unravel/experiments/run_token_strategies.py` (13 strategies tested).")
+r.font.size = Pt(11); r.font.color.rgb = CHARCOAL_RGB
+add_footer(s, "Post-hoc refinement — see paper §Post-hoc tokenizer refinement; sweep data in unravel/experiments/")
+
 # Slide 15 — Take-home
 s = prs.slides.add_slide(BLANK)
 add_title(s, "Take-home")
