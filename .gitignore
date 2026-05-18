@@ -66,6 +66,15 @@ paper/*.out
 # ---------------------------------------------------------------------------
 *.zip
 release_zips/
+# Exception: the 6 zipped unravel HTMLs that we DO ship in-repo because their
+# raw forms exceed GitHub's 100 MB per-file hard limit. Restore with
+#   bash unravel/unzip_heavy.sh
+!unravel/unravel_report.html.zip
+!unravel/beta-glucan.html.zip
+!unravel/host-glycan.html.zip
+!unravel/v2/unravel_report.html.zip
+!unravel/v2/beta-glucan.html.zip
+!unravel/v2/host-glycan.html.zip
 
 # ---------------------------------------------------------------------------
 # Reproducibility framework — log dirs are noisy + per-machine; .npy decompressed

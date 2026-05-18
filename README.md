@@ -381,6 +381,14 @@ python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13
 
 **Parallel v2 unravel view:** [`unravel/v2/index.html`](unravel/v2/) re-applies the deployed model to the same 358,751-PUL unsupervised corpus using the v2 tokenizer, producing per-substrate HTMLs alongside the originals at [`unravel/*.html`](unravel/). Sig-gene chips in the v2 view visually separate **signature tokens** (specific, e.g. `GH13`) from **signature families** (the augmented fallback, e.g. `GH`, rendered with a dashed border + `FAM` label) so reviewers can see exactly which signal came from which. Build both views with `python3 unravel/build_unravel_report.py` (v1, default) and `python3 unravel/build_unravel_report.py --v2` (v2).
 
+**Heavy unravel HTMLs (ship-as-zip).** Six per-substrate HTMLs exceed GitHub's 100 MB per-file hard limit (`unravel/{beta-glucan,host-glycan,unravel_report}.html` and the same three under `unravel/v2/`). They ship in-repo as `.zip` companions next to the original paths — total ~141 MB across all 6, vs ~1.5 GB raw — and a one-line helper restores them in place after clone:
+
+```bash
+bash unravel/unzip_heavy.sh
+```
+
+The helper is idempotent (skips files whose unzipped HTML is already newer than its `.zip`). After running it, open [`unravel/index.html`](unravel/index.html) or [`unravel/v2/index.html`](unravel/v2/) in a browser — every per-substrate tab renders without retraining or re-running inference.
+
 ---
 
 ## Decks
