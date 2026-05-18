@@ -32,7 +32,7 @@ import pickle
 from pathlib import Path
 import numpy as np
 
-from src.preprocessing.tokenizers import tok_cpu, is_cazy
+from src.preprocessing.tokenizers import tok_cpu, tok_cpu_v2, is_cazy
 from src.calibration.temperature import apply_temperature
 from src.ablation.leave_one_token_out import ablate_pul_for_class
 from src.lit_validation.canon import build_canon
@@ -54,9 +54,13 @@ class PULPredictor:
         self.classes_ = list(pipeline.named_steps["vr"].classes_)
         self._vocab = set(pipeline.named_steps["cv"].vocabulary_.keys())
         self.canon = build_canon(lit_tsv_path) if lit_tsv_path else None
+        # Use whichever tokenizer the CountVectorizer was fit with (v2 bundles
+        # are fit with tok_cpu_v2; original bundles use tok_cpu). Fallback to
+        # tok_cpu for older pickles that don't carry a tokenizer attribute.
+        self._tokenize = pipeline.named_steps["cv"].tokenizer or tok_cpu
 
     def oov_proportion(self, seq: str) -> float:
-        toks = tok_cpu(seq)
+        toks = self._tokenize(seq)
         if not toks: return 0.0
         return sum(1 for t in toks if t not in self._vocab) / len(toks)
 
@@ -114,15 +118,17 @@ def load_predictor(model_pkl_path: str | Path,
     ``cv`` (CountVectorizer) and ``vr`` (OvR(ExtraTrees)) so ``PULPredictor``
     can treat it uniformly.
     """
-    # The deployed pickle was saved from a script where ``tok_cpu`` lived in
-    # ``__main__``. Inject it so unpickling resolves the reference regardless
-    # of which script (or notebook) is loading the model.
-    import sys
+    # The deployed pickles were saved from scripts where ``tok_cpu`` (or the
+    # v2 refinement ``tok_cpu_v2``) lived in ``__main__``. Inject both so
+    # unpickling resolves the reference regardless of which script (or notebook)
+    # is loading the model. We use joblib.load so it also transparently
+    # decompresses the xz-compressed v2 bundles.
+    import sys, joblib
     import numpy as np
     from sklearn.pipeline import Pipeline
-    sys.modules['__main__'].tok_cpu = tok_cpu
-    with open(model_pkl_path, "rb") as f:
-        obj = pickle.load(f)
+    sys.modules['__main__'].tok_cpu    = tok_cpu
+    sys.modules['__main__'].tok_cpu_v2 = tok_cpu_v2
+    obj = joblib.load(model_pkl_path)
     # Support both shapes: the deployed flat-dict and the older Pipeline form.
     if "pipeline" in obj and "T" in obj:
         pipeline, T = obj["pipeline"], obj["T"]
