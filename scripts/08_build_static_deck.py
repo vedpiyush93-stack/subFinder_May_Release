@@ -1664,7 +1664,15 @@ r = p.add_run(); r.text = ("Original deployed bundle (`artifacts/final_model.pkl
                             "Rebuild from scratch in ~90 s/rep with `scripts/13_*.py`. "
                             "Strategy sweep: `unravel/experiments/run_token_strategies.py` (13 strategies tested).")
 r.font.size = Pt(11); r.font.color.rgb = CHARCOAL_RGB
-add_footer(s, "Post-hoc refinement — see paper §Post-hoc tokenizer refinement; sweep data in unravel/experiments/")
+# v2 sig-gene PR vs the family-augmented lit canon
+p = tf.add_paragraph(); p.alignment = PP_ALIGN.LEFT; p.space_before = Pt(8)
+r = p.add_run(); r.text = "V2 sig-gene PR (top-3, family-augmented canon): "
+r.font.size = Pt(11); r.font.bold = True; r.font.color.rgb = SAGE_RGB
+r = p.add_run(); r.text = ("813/1,028 PULs hit a lit-canonical signal in top-3 (79.1%) — 749 caught by specific token (`GH13`) plus 64 extra rescued by family fallback (`GH`). "
+                            "Gene-view scope recall: specific tokens 92/173 = 53.2%, family fallbacks 24/31 = 77.4% — family signal is more consistent across PULs because fewer competitors at the family level. "
+                            "Full per-substrate breakdown: `paper/tables/table12_v2_per_substrate_sig_pr.csv` (built by `scripts/13c_v2_sig_gene_pr.py`).")
+r.font.size = Pt(11); r.font.color.rgb = CHARCOAL_RGB
+add_footer(s, "Post-hoc refinement — see paper §Post-hoc tokenizer refinement and Supplement Table S5b for v2 sig-gene PR")
 
 # Slide 15 — Take-home
 s = prs.slides.add_slide(BLANK)
