@@ -150,11 +150,10 @@ def main():
     per.to_csv(TAB/"table_per_substrate.csv", index=False)
 
     # ---------------------------------------------------------------- FIG 3/4
+    # Exact curated canon. No family-prefix augmentation: the tokenizer emits no
+    # family-only tokens, so augmenting would only inflate the denominator.
     canon = build_canon(ROOT/"data/Literature_Data_fam_substrate_mapping.tsv", SUBSTRATE_ALIAS)
-    import re as _re
-    canon_aug = {s: fams | {_re.match(r"^(GH|PL|CE|CBM|GT|AA)", f).group(1)
-                            for f in fams if _re.match(r"^(GH|PL|CE|CBM|GT|AA)[0-9]", f)}
-                 for s, fams in canon.items()}
+    canon_aug = canon
     abl = pd.read_csv(ROOT/f"artifacts/ablation/sig_gene_ablation_oof_outer{S}_v2.csv")
     abl["top3"] = abl["top3"].fillna("").astype(str)
 
@@ -166,8 +165,7 @@ def main():
             for tok in t3.split(";"):
                 if tok and tok != "nan": cnt[tok] = cnt.get(tok, 0) + 1
         for tok, n in sorted(cnt.items(), key=lambda kv: -kv[1])[:3]:
-            status = ("exact" if tok in canon[s] else
-                      "family" if tok in canon_aug[s] else "not in DB")
+            status = "exact" if tok in canon[s] else "not in DB"
             rows.append(dict(substrate=s, token=tok, n=n, status=status))
     sg = pd.DataFrame(rows)
     sg.to_csv(TAB/"table_top3_siggenes.csv", index=False)
@@ -190,7 +188,6 @@ def main():
            f"outer repeat {S}; colour = status in the curated enzyme table")
     ax.legend(handles=[Patch(facecolor=COLOR[k], label=v) for k, v in
                        [("exact", "listed for this substrate"),
-                        ("family", "family-level match"),
                         ("not in DB", "not a CAZy family in the table")]],
               loc="lower right", fontsize=7.5)
     plt.savefig(FIG/"fig3_siggenes.png"); plt.close()

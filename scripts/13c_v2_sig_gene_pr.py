@@ -118,9 +118,15 @@ oof.to_csv(ablation_out, index=False)
 print(f"[13c] wrote {ablation_out.relative_to(ROOT)}  ({len(oof):,} rows, {(oof['true']==oof['pred']).sum()} correct)")
 
 # ---------------------------------------------------------------------------
-# Augmented canon: substrate -> {specific canon tokens, family prefixes derived from them}
+# Literature canon: substrate -> {documented CAZy families}
+#
+# An earlier version also derived family prefixes ("GH13" -> "GH") so that the
+# family-only tokens the tokenizer used to emit could be credited. The tokenizer
+# no longer emits them, so the canon is matched exactly as curated. The
+# canon_family bucket is retained and reported so the tables keep their shape;
+# it is now expected to be empty.
 # ---------------------------------------------------------------------------
-print("[13c] building family-augmented lit canon ...")
+print("[13c] building lit canon (exact families, no family-prefix augmentation) ...")
 lit = pd.read_csv(ROOT / "data/Literature_Data_fam_substrate_mapping.tsv", sep="\t")
 lit.columns = [c.strip() for c in lit.columns]
 SA = {
@@ -140,14 +146,10 @@ for _, r in lit.iterrows():
     for s, aliases in SA.items():
         if set(aliases) & set(parts):
             canon_specific[s].add(r["Family"])
-canon_family = {s: {CAZY_FAMILY_RE.match(t).group(1)
-                    for t in canon_specific[s]
-                    if CAZY_FAMILY_RE.match(t)}
-                for s in substrates}
+canon_family = {s: set() for s in substrates}   # no family-prefix augmentation
 print(f"      canon_specific (sample): alpha-glucan has {len(canon_specific['alpha-glucan'])} tokens "
       f"({sorted(canon_specific['alpha-glucan'])[:5]} ...)")
-print(f"      canon_family   (sample): alpha-glucan has {len(canon_family['alpha-glucan'])} family prefixes "
-      f"({sorted(canon_family['alpha-glucan'])})")
+print(f"      canon_family: disabled (tokenizer emits no family-only tokens)")
 
 # ---------------------------------------------------------------------------
 # Per-substrate PR with three count buckets

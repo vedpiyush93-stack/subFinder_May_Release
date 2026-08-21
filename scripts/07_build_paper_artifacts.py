@@ -125,17 +125,18 @@ def main():
     # 4. Per-substrate sig-gene FUNNEL on calibrated TRUE-class ablation
     print("[07] Per-substrate sig-gene funnel (calibrated TRUE-class) ...")
     # Prefer the v2 ablation when the deployed configuration is the v2 one, and
-    # match it with the v2 tokenizer + family-augmented canon so this funnel and
+    # match it with the v2 tokenizer so this funnel and
     # scripts/13c_v2_sig_gene_pr.py agree by construction rather than by luck.
     abl_v2 = ROOT/f"artifacts/ablation/sig_gene_ablation_oof_outer{args.seed}_v2.csv"
     use_v2 = top_config.startswith("cpuV2") and abl_v2.exists()
     if use_v2:
         abl_csv = abl_v2
         tok_fn = tok_cpu_v2
-        canon = {sub: (fams | {re.match(r"^(GH|PL|CE|CBM|GT|AA)", f).group(1)
-                               for f in fams if re.match(r"^(GH|PL|CE|CBM|GT|AA)[0-9]", f)})
-                 for sub, fams in canon.items()}
-        print("  using the v2 ablation with tok_cpu_v2 + family-augmented canon")
+        # The canon is matched exactly as curated. It was previously augmented
+        # with family prefixes so that family-only tokens could be credited;
+        # the tokenizer no longer emits those, so augmenting would only inflate
+        # the eligible denominator.
+        print("  using the v2 ablation with tok_cpu_v2 and the exact curated canon")
     else:
         tok_fn = tok_cpu
         abl_csv = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_groundtruth_calibrated.csv"

@@ -2,8 +2,8 @@
   "shorthand": "cpuV2__ET500_log2",
   "seed": 42,
   "fold": 0,
-  "test_acc": 0.8980582524271845,
-  "wall_sec": 4.6288981437683105,
+  "test_acc": 0.9077669902912622,
+  "wall_sec": 4.775378942489624,
   "n_test": 206,
   "n_train": 824
 }

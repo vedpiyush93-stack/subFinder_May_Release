@@ -75,43 +75,30 @@ def tok_cpu_tc2(s: str) -> list[str]:
     return out
 
 
-_CAZY_FAMILY_RE = re.compile(r"^(GH|PL|CE|CBM|GT|AA)([0-9]+)$")
-
-
 def tok_cpu_v2(s: str) -> list[str]:
-    """v2 deployed tokenizer (May 2026 refinement; TC depth revised Aug 2026).
-
-    Two augmentations on top of tok_cpu:
-
-      1. TC truncation to the 3-level FAMILY: "1.B.14.6.1" -> "1.B.14"
-         TCDB numbers are class.subclass.family.subfamily.protein. Level 3 is
-         the family — "1.B.14" is the Outer Membrane Receptor family, i.e. the
-         TonB-dependent SusC-like receptors that define a PUL. That is the unit
-         that carries substrate meaning, and it is also the depth the
-         unsupervised corpus natively uses (99.9% of its 1.68 M TC tokens are
-         3-level, vs 32.4% of supervised ones), so truncating to 3 aligns the
-         two corpora exactly.
-
-         This replaces an earlier 2-level variant ("1.B"). Two levels collapsed
-         596 distinct families into 26 tokens — 2.A alone swallowed 106
-         families, 1.B swallowed 73 — which is biologically meaningless. It
-         scored a flattering unsupervised OOV (7.4% vs 16.5%) precisely BECAUSE
-         the vocabulary had been reduced to almost nothing, and it was no more
-         accurate: 5x5 RSKF 0.9151 +/- 0.0189 at 2-level vs 0.9163 +/- 0.0167
-         at 3-level. The 2-level form is retained as tok_cpu_tc2 for provenance.
-
-      2. CAZy family augmentation (keep original AND add family-only):
-         "GH13" -> ["GH13", "GH"]    "AA17" -> ["AA17", "AA"]
-         Gives novel CAZy families never seen in supervised data a fallback
-         match on the family prefix. Because this feeds a CountVectorizer, the
-         family token's COUNT also becomes a feature ("how many GH genes").
+    """Deployed tokenizer: tok_cpu, with TC numbers read at the 3-level family.
 
     Example:
-        "1.B.14.6.1,GH5_4,CBM6|null" -> ["1.B.14", "GH5", "GH", "4", "CBM6", "CBM", "null"]
+        "1.B.14.6.1,GH5_4,CBM6|null" -> ["1.B.14", "GH5", "4", "CBM6", "null"]
 
-    A matching TC-family fallback (emitting "1.B" alongside "1.B.14", mirroring
-    GH13 -> GH) was tested and rejected: 0.9148 +/- 0.0132, slightly worse than
-    plain 3-level. The coarse token only dilutes the signal.
+    TC identifiers are class.subclass.family.subfamily.protein, so level 3 is the
+    family: "1.B.14" is the Outer Membrane Receptor family, the TonB-dependent
+    SusC-like receptors characteristic of a PUL. Three levels is also the depth
+    the corpus is written at -- 99.9% of the 1,678,991 TC tokens in the
+    unsupervised corpus are already 3-level, while the labelled set mixes 3- and
+    5-level forms -- so reading both at the family level makes "1.B.14.6.1" and
+    "1.B.14" recognisable as the same transporter instead of two unrelated
+    strings.
+
+    CAZy tokens are left exactly as they are. An earlier variant additionally
+    emitted a family-only companion ("GH13" -> "GH13" plus "GH") to give unseen
+    families something to match on; that is deliberately not done, because it
+    conflates enzymes of very different specificity under one feature -- every
+    GH is counted together regardless of what it acts on.
+
+    A 2-level TC variant is kept as tok_cpu_tc2 for provenance; it collapses 596
+    distinct transporter families into 26 labels, which is too coarse to carry
+    substrate signal.
     """
     out = []
     for t in _COMMA_PIPE_UNDERSCORE.split(str(s)):
@@ -119,11 +106,6 @@ def tok_cpu_v2(s: str) -> list[str]:
         if _TC_HEAD.match(t):
             parts = t.split(".")
             out.append(".".join(parts[:3]) if len(parts) >= 3 else t)
-            continue
-        m = _CAZY_FAMILY_RE.match(t)
-        if m:
-            out.append(t)
-            out.append(m.group(1))
             continue
         out.append(t)
     return out
