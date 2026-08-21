@@ -1,3 +1,15 @@
+# ---------------------------------------------------------------------------
+# Held back from the public repo (Aug 2026) — still being worked on locally.
+# unravel/      pre-rendered views; the v2 set needs regenerating under the
+#               3-level TC tokenizer before it is fit to publish
+# paper/        manuscript sources + tables
+# presentations/ slide sources
+# A backup of all three sits at /Users/ved/subfinder_held_back/
+# ---------------------------------------------------------------------------
+unravel/
+paper/
+presentations/
+
 # =============================================================================
 # subFinder release — git ignore rules (push-ready)
 # =============================================================================
