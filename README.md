@@ -19,12 +19,14 @@
 
 | Metric | Value | Source |
 |---|---:|---|
-| Test accuracy (5×5 RSKF, n=625 fits) | **0.9066 ± 0.0174** | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
+| Test accuracy, deployed model (5×5 RSKF, n=650 fits) | **0.9183 ± 0.0153** | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
+| Test accuracy, `tok_cpu` variant | 0.9066 ± 0.0174 | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
 | Top-3 cumulative accuracy | **0.976** | [`docs/tables/tab_rank_redemption.csv`](docs/tables/tab_rank_redemption.csv) |
 | High-confidence (≥0.8) accuracy | **97.4 %** on 67 % of PULs | [`docs/tables/tab_confidence_vs_correct.csv`](docs/tables/tab_confidence_vs_correct.csv) |
 | Gap vs paper BRF baseline | **+6.64 pp** (paired *t*, p ≈ 5×10⁻¹⁴) | `paper/audit_output.txt` |
 | Gap vs best deep model | **+11.77 pp** | `paper/audit_output.txt` |
-| ECE (10-bin) after T-scaling | 0.094 → **0.029** | [`artifacts/calibration_report.csv`](artifacts/calibration_report.csv) |
+| ECE (10-bin), raw → temperature-scaled | 0.071 → **0.069** | [`artifacts/calibration_report.csv`](artifacts/calibration_report.csv) |
+| Truth within top-2 / top-3 | **0.967 / 0.979** | `paper/tables/table_topk.csv` |
 | Per-PUL sig-gene hit rate (TRUE-class, K=3) | **768/837 = 91.8 %** | `paper/tables/` |
 
 > **On model-init variance.** Earlier releases shipped a 5-rep suite that re-trained
@@ -95,51 +97,71 @@ flowchart TD
 | 🔍 **Reviewer** — verify every paper number, no training | **[Path B](#path-b--reproduce-every-paper-number)** | 10 min |
 | 🔬 **Researcher** — ablations, retrain, extend | **[Path C](#path-c--retrain-or-extend)** | 30 min – 12 h |
 
-> 🚨 **All paths need Git LFS.** Without it, a `git clone` gives you 135-byte pointer files instead of the actual model + n-gram blobs. Run `brew install git-lfs && git lfs install` **once per machine**, then clone normally.
+> **No Git LFS.** A plain `git clone` gives you everything: both deployed models, all six embeddings, the unlabelled training corpus, and every per-fold prediction. Earlier releases tracked ~186 GB of FastText n-gram tables and ~6.4 GB of per-run classifier weights through LFS; neither ships any more.
 
 ---
 
 ## Path A — Predict the substrate of *your* PUL
 
 ```bash
-# 1. One-time LFS install (skip if already done)
-brew install git-lfs && git lfs install
-
-# 2. Clone — LFS auto-fetches the 173 MB deployed model
+# 1. Clone. No Git LFS, no extra downloads — the model ships in the repo.
 git clone https://github.com/vedpiyush93-stack/subFinder_May_Release.git
 cd subFinder_May_Release && pip install -r requirements.txt
 
-# 3. Predict
-python3 scripts/06_inference.py --seq "GH13,CBM6|PfkB,GH97_4|null" --pretty
+# 2. Predict
+python3 scripts/06_inference.py \
+  --model artifacts/final_model_v2.pkl \
+  --seq "1.B.14.6.1,GH13,CBM48,2.A.1" --pretty
 ```
+
+`artifacts/final_model_v2.pkl` (21 MB) is the deployed model and what you should
+use. `artifacts/final_model.pkl` (24 MB) is the earlier `tok_cpu` variant, kept
+for provenance. Prediction needs no GPU and takes milliseconds.
 
 ### Three input formats
 
 | Flag | Use when… | Example |
 |---|---|---|
-| `--seq "..."` | You already have the PUL token-string | `--seq "GH13,CBM6\|null"` |
+| `--seq "..."` | You have one PUL as a token string | `--seq "GH13,CBM6\|null"` |
 | `--in-csv FILE --col sig_gene_seq` | You have many PULs in a CSV | `--in-csv my_puls.csv --out preds.csv` |
-| `--cgc-standard FILE` | You ran dbCAN — feed `cgc_standard.out` directly | `--cgc-standard data/example_cgc_standard.out` |
+| `--cgc-standard FILE` | You ran dbCAN — feed its CGC table directly | `--cgc-standard data/example_cgc_standard.out` |
 
-Try the shipped example: `bash scripts/verify_cgc_format.sh` (parses [`data/example_cgc_standard.out`](data/example_cgc_standard.out), should predict `chitin`).
+The CGC table is dbCAN's gene-cluster output: a tab-separated file with one row
+per gene giving the cluster identifier, the gene's role (CAZyme, TC, TF, STP or
+null), contig, protein identifier, coordinates, strand, and annotated family.
+
+**The two input paths give identical predictions**, and that is enforced rather
+than assumed — `pytest tests/verify_input_formats_agree.py` round-trips real loci
+through the CGC reader and requires identical tokens and probabilities.
 
 ### Reading the output
 
 | Field | Meaning |
 |---|---|
-| `predicted substrate` | argmax over 12 classes |
-| `calibrated probs` | full probability vector after T-scaling (ECE ≈ 0.03) |
-| `top-5 sig genes` | tokens whose removal drops the predicted-class probability the most |
-| `OOV proportion` | fraction of PUL tokens not in the training vocab |
-| `refuse_to_predict` | informational flag (`True` if OOV > 10 %); see [OOV reference](#reference--out-of-vocabulary-tokens) |
+| `predicted` | the highest-probability substrate |
+| `probabilities` | all 12 calibrated probabilities, summing to 1 |
+| `p_values` | one per substrate, under a uniform-Dirichlet null: $(1-p)^{11}$ |
+| `is_significant` | whether the winner clears $p<0.05$, i.e. probability $>0.235$ |
+| `top-k sig genes` | genes whose removal drops that substrate's probability most |
+| `oov_proportion` | fraction of this locus's tokens unseen in training |
 
-> **Tokenizer tip:** `tok_cpu` splits on `,`, `|`, **and** `_`. So `GH43_34` becomes `[GH43, 34]` — the subfamily index is its own token. For TC numbers (e.g. `1.B.14.12.1` vs `1.B.14`), pass `--tc-mode both|truncate|full` to control which form is emitted.
+Read it in that order: check significance first — if the winner does not clear the
+threshold the locus has no confident call, and the top two or three should be read
+together. The truth is within the top two 96.7 % of the time and the top three
+97.9 %, so a hedged call is usually still informative.
+
+> **Tokenizer note.** `tok_cpu_v2` splits on `,`, `|` and `_`, so `GH43_34`
+> becomes `[GH43, 34]`, and it reads TC identifiers at their 3-level family, so
+> `1.B.14.6.1` and `1.B.14` are the same feature. For the CGC path, `--tc-mode`
+> defaults to `full` (pass identifiers through, let the tokenizer truncate once).
+> Do **not** use `--tc-mode both` with this model: it emits both forms, which the
+> tokenizer collapses to one token, double-counting every transporter.
 
 ---
 
 ## Path B — Reproduce every paper number
 
-No training, no GPU, no downloads beyond the LFS-aware clone. Every leaderboard / calibration / sig-gene number recomputes from the **2,675 lightweight prediction files** already in `artifacts/predictions/`.
+No training, no GPU, nothing to download beyond the clone. Every leaderboard / calibration / sig-gene number recomputes from the **2,675 lightweight prediction files** already in `artifacts/predictions/`.
 
 ```bash
 # Clone + install (same as Path A, steps 1-2)
@@ -302,22 +324,57 @@ inference bitwise reproducible.
 
 ---
 
+## Rebuilding the paper and its numbers
+
+Every figure, table and number in `paper/main.pdf` and `paper/supplement.pdf` is
+generated — none is typed by hand.
+
+```bash
+export REPRO_REP_SEED=1000                          # required; see C.2
+
+python3 scripts/04_benchmark.py                     # leaderboard from predictions/
+python3 scripts/04b_rebuild_per_fold_metrics.py     # per-fold table (04 does NOT write this)
+python3 scripts/07_build_paper_artifacts.py         # paper/audit_output.txt
+python3 scripts/07c_build_paper_figures.py          # all 10 figures + paper/generated/*.tex
+cd paper && pdflatex main && bibtex main && pdflatex main && pdflatex main
+python3 scripts/07b_verify_paper_numbers.py         # must pass: re-derives 27 values
+                                                    # from artifacts and checks the PDFs
+```
+
+`paper/generated/` holds `\newcommand` macros for every stated number plus the
+tables as `.tex`; `main.tex` `\input`s them, so a stale figure in the prose is not
+possible.
+
+### Tests
+
+```bash
+pytest tests/leak_audit.py                     # splits + label-free embeddings
+pytest tests/verify_reduced_embedding_files.py # compacted FastText == full model
+pytest tests/verify_input_formats_agree.py     # token string == dbCAN CGC table
+```
+
+The last one matters if you touch `src/preprocessing/cgc_loader.py`: it renders
+real loci into a CGC table, reads them back, and requires identical tokens and
+identical probabilities. A previous default double-counted transporters and moved
+predictions by up to 0.251 without any error being raised.
+
 ## Repository layout
 
 ```
 subFinder_May_Release/
 ├── data/                    1,030 labeled PULs + curated CAZy↔substrate DB + unsupervised corpus (359,763 PULs, 5.7 MB gz)
 ├── src/                     library (preprocessing, embeddings, shallow, deep, calibration, ablation, inference)
-├── scripts/                 12 CLI drivers (01_train_embeddings → 12_build_per_pul_report)
+├── scripts/                 CLI drivers (01_train_embeddings → 13c_v2_sig_gene_pr)
 ├── notebooks/               build_paper_artifacts.ipynb (master end-to-end feeder)
 ├── artifacts/
-│   ├── predictions/         25 configs × 25 trials × {probs_test.npz, probs_train.npz, classifier.*, meta.json}
+│   ├── predictions/         26 configs × 25 trials × {probs_test.npz, probs_train.npz, meta.json}
 │   ├── calibration/         per-fold T + 4-method comparison
 │   ├── ablation/            leave-one-token-out Δ-prob (argmax + TRUE, raw + calibrated)
 │   ├── embeddings/          6 global embeddings, ~38 MB total, regular git (no LFS)
 │   ├── leaderboard.csv      25-row sorted leaderboard
 │   ├── per_fold_metrics.csv 625-row per-trial CSV
-│   └── final_model.pkl      deployed calibrated model (LFS)
+│   ├── final_model_v2.pkl   deployed calibrated model, 21 MB
+│   └── final_model.pkl      earlier tok_cpu variant, 24 MB
 ├── paper/                   PDFs + 12 source tables + audit_output.txt
 ├── docs/                    deck.pptx + deck.html + figures/ + tables/
 └── tests/                   leak_audit.py + verify_reduced_embedding_files.py
@@ -450,12 +507,12 @@ After applying the deployed model to the 359,763-PUL unsupervised pre-training c
 `tok_cpu_v2` fixes both:
 
 1. **Truncate TC numbers to the 3-level family** (`1.B.14.6.1` → `1.B.14`).
-2. **Augment CAZy tokens with a family-only fallback** (`GH13` → keep `GH13` **and** add `GH`).
+2. **CAZy tokens are left exactly as they are.** No family-only companion is emitted.
 
 | | original `tok_cpu` | refined `tok_cpu_v2` |
 |---|---:|---:|
-| 5×5 RSKF accuracy | 0.9066 ± 0.0174 | **0.9150 ± 0.0167** |
-| Deployed vocab size | 517 | **360** |
+| 5×5 RSKF accuracy | 0.9066 ± 0.0174 | **0.9183 ± 0.0153** |
+| Deployed vocab size | 517 | **354** |
 | Unsupervised mean OOV | 21.3 % | **16.5 %** |
 | Unsup PULs at OOV ≤ 10 % | 29.6 % | **37.4 %** |
 
@@ -469,7 +526,7 @@ That variant reported a far better unsupervised OOV (5.4 % vs 16.5 %), which loo
 
 Three levels also matches the unsupervised corpus's native format exactly, which is what closes the format gap in the first place.
 
-A TC-family fallback mirroring the CAZy trick (emitting `1.B` alongside `1.B.14`) was tested and **rejected**: 0.9148 ± 0.0132, marginally worse. The coarse token only dilutes the signal. The 2-level form is retained as `tok_cpu_tc2` for provenance.
+Two variants were tested and rejected. Emitting `1.B` alongside `1.B.14` — a TC analogue of the CAZy trick — scored 0.9148 ± 0.0132; the coarse token only dilutes the signal. Emitting a bare `GH` alongside every `GH13` scored 0.9163 ± 0.0167 against 0.9183 ± 0.0153 without it, and is unprincipled besides: a bare `GH` pools a GH13 amylase with a GH10 xylanase, so the feature it creates is close to a count of "glycoside hydrolases present". The 2-level form is retained as `tok_cpu_tc2` for provenance.
 
 **Additive — original deployed model unchanged:** the refinement ships as a SEPARATE artifact [`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl); the original [`artifacts/final_model.pkl`](artifacts/final_model.pkl) is preserved and remains the default. Both versions are bundled in-repo and ready to use:
 
@@ -483,7 +540,7 @@ python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13
 
 **Self-contained distribution.** [`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl) is saved with `joblib.dump(..., compress=("xz", 6))`, shrinking it from 144 MB to **~20 MB** — tracked via regular git, **no LFS**. Loading is transparent: `joblib.load()` auto-detects the xz wrapper, so no inference code changes. Rebuild in ~90 s with `python3 scripts/13_train_tc2_refinement.py`.
 
-**V2 signature-gene PR (lit-canon validation).** [`scripts/13c_v2_sig_gene_pr.py`](scripts/13c_v2_sig_gene_pr.py) runs the same leave-one-token-out ablation as the v1 paper analysis but with `tok_cpu_v2`, then scores top-3 sig-genes against a **family-augmented** literature canon (for every specific canon token like `GH13` it also adds the family prefix `GH` as a canonical family fallback). Result on the 5-fold seed-42 OOF: **804/1,028 PULs (78.2%) hit a lit-canonical signal in top-3** — 739 via specific token, **65 extra rescued by the family fallback**. Gene-view scope recall: specific tokens 96/173 = 55.5%, **family fallbacks 24/31 = 77.4%** (higher because there are fewer competitors at the family level — confirms the augmented family tokens carry consistent substrate-specific signal). Outputs: `paper/tables/table12_v2_per_substrate_sig_pr.csv` (12 substrates × 14 cols, supplement Table S5b), `paper/tables/table12_v2_aggregate_sig_pr.csv` (aggregate), [`artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv`](artifacts/ablation/) (per-PUL top-K).
+**Signature genes and literature agreement.** [`scripts/13c_v2_sig_gene_pr.py`](scripts/13c_v2_sig_gene_pr.py) runs the leave-one-token-out ablation with `tok_cpu_v2` and scores the top-3 signature genes against the curated literature canon, matched exactly (no family-prefix augmentation — nothing emits family tokens any more). Result: **757 of the 837 loci where the question can be asked (90.4%) have a documented enzyme among their top three**. Gene-view scope recall is 101/173 = 58.4%. The 193 excluded loci contain no enzyme the table lists for their substrate, so no answer is possible; they are omitted rather than scored as failures. Pass `--split-seed` to run it on a different outer repeat.
 
 **V2 trust calibrator.** The unravel trust score (the per-PUL probability that a prediction is correct, given conf / OOV / lit-canon support / Jaccard-to-labeled-neighbor) was retrained for v2 — the original calibrator's coefficients were fit against v1's OOV and vocab distributions, so applying it directly to v2 would give biased scores (v2's OOV and vocabulary distributions differ). Build with `python3 unravel/filtering/build_trust_calibrator.py --v2`; apply to v2 HTMLs with `python3 unravel/filtering/apply_trust_v2.py --v2`. The v1 calibrator is preserved at the original paths; the v2 calibrator ships as `unravel/filtering/trust_calibrator_v2.pkl`, `trust_significance_v2.json`, `trust_extrapolation_ranges_v2.json`, `trust_training_set_v2.csv`. Same 13-candidate feature set, same significance+intuition filter — only the model weights and per-feature [P1, P99] extrapolation bands change.
 
