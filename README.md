@@ -451,6 +451,14 @@ python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13
 
 **Strategy sweep documentation:** [`unravel/experiments/`](unravel/experiments/) contains the full 13-strategy comparison, dimensionality analysis, and `report.md` with the rationale. Curator-shareable artifacts: [`unravel/experiments/curator_brief.md`](unravel/experiments/curator_brief.md) (crisp 4-section brief, with same-family TC-depth examples and OOV impact tables) and [`unravel/experiments/curator_format_report.md`](unravel/experiments/curator_format_report.md) (full narrative).
 
+> **⚠ `unravel/v2/` is stale as of the 3-level TC change.** Those HTMLs were
+> generated with the previous 2-level `tok_cpu_v2`, so their predictions, OOV
+> figures, trust scores and signature-gene chips still reflect that tokenizer.
+> The v1 views in [`unravel/`](unravel/) are unaffected (they use `tok_cpu` and
+> [`artifacts/final_model.pkl`](artifacts/final_model.pkl), neither of which
+> changed). Regenerate with `python3 unravel/build_unravel_report.py --v2`
+> followed by the trust-calibrator steps below.
+
 **Parallel v2 unravel view:** [`unravel/v2/index.html`](unravel/v2/) re-applies the deployed model to the same 358,751-PUL unsupervised corpus using the v2 tokenizer, producing per-substrate HTMLs alongside the originals at [`unravel/*.html`](unravel/). Sig-gene chips in the v2 view visually separate **signature tokens** (specific, e.g. `GH13`) from **signature families** (the augmented fallback, e.g. `GH`, rendered with a dashed border + `FAM` label) so reviewers can see exactly which signal came from which. Build both views with `python3 unravel/build_unravel_report.py` (v1, default) and `python3 unravel/build_unravel_report.py --v2` (v2).
 
 **Heavy unravel HTMLs (ship-as-zip).** Six per-substrate HTMLs exceed GitHub's 100 MB per-file hard limit (`unravel/{beta-glucan,host-glycan,unravel_report}.html` and the same three under `unravel/v2/`). They ship in-repo as `.zip` companions next to the original paths — total ~141 MB across all 6, vs ~1.5 GB raw — and a one-line helper restores them in place after clone:
