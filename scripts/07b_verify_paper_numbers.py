@@ -74,9 +74,10 @@ check("signature-gene rate",     f"{fun.hit.sum()/fun.eligible.sum()*100:.1f}")
 check("gene-view flagged",       int(fun.flagged.sum()))
 check("gene-view in-scope",      int(fun.in_scope.sum()))
 check("lit canon pairs",         audit["lit_db_substrate_family_pairs_after_alias_collapse"])
+# the calibration table renders four decimals; the prose quotes three
 for _, r in cal.iterrows():
     if r.method in ("uncalibrated", "temperature_scaling", "isotonic_cv5 (sklearn)"):
-        check(f"ECE {r.method.split('_cv')[0]}", f"{r.ece_10bin:.3f}")
+        check(f"ECE {r.method.split('_cv')[0]}", f"{r.ece_10bin:.4f}")
 w = per.iloc[-1]
 check("weakest substrate F1",    f"{w.f1:.2f}")
 check("weakest substrate recall", f"{w.recall:.2f}")
