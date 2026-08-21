@@ -137,6 +137,11 @@ def main():
                 # Keras categorical labels (aligned with tr_outer order)
                 cls = sorted(set(y))
                 onehot_tr = np.eye(len(cls))[[cls.index(c) for c in y[tr_outer]]].astype(np.float32)
+                # Release the previous fit's graph. Without this, every build_dl()
+                # leaks its model into the TF session: across 400 fits RSS reached
+                # 46 GB and per-fit time drifted 13.7s -> 20.3s (+48%). Verified
+                # bit-identical results with and without (build_dl reseeds anyway).
+                keras.backend.clear_session()
                 model = build_dl(dl_arch, (args.max_seq_len, Xtr_outer.shape[-1]))
                 # Inner train/val split for EarlyStopping. tr_inner ⊆ tr_outer are GLOBAL
                 # indices; we need the POSITIONS within tr_outer that they map to.

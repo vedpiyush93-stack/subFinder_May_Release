@@ -1,8 +1,0 @@
-rank,1,2,3,4,5
-1,cpu__ET500_log2,cpu__ET500_log2,cpu__ET500_log2,cpu__ET500_log2,cpu__ET500_log2
-2,ftCbow_MM__ET500_sqrt,ftCbow_MM__ET500_sqrt,ftCbow_MM__ET500_sqrt,ftCbow_MM__ET500_sqrt,ftCbow_MM__ET500_sqrt
-3,cv__BRF100,cv__BRF100,cv__BRF100,cv__BRF100,cv__BRF100
-4,ftCbow__BRF100,ftCbow__BRF100,ftCbow__BRF100,ftCbow__BRF100,ftCbow__BRF100
-5,w2vSg__BRF100,w2vSg__BRF100,w2vSg__BRF100,w2vSg__BRF100,w2vSg__BRF100
-6,ftSg__BRF100,ftSg__BRF100,w2vCbow__BRF100,ftSg__BRF100,ftSg__BRF100
-7,w2vCbow__BRF100,w2vCbow__BRF100,ftSg__BRF100,w2vCbow__BRF100,w2vCbow__BRF100

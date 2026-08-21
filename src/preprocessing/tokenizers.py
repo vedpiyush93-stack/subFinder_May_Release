@@ -79,46 +79,51 @@ _CAZY_FAMILY_RE = re.compile(r"^(GH|PL|CE|CBM|GT|AA)([0-9]+)$")
 
 
 def tok_cpu_v2(s: str) -> list[str]:
-    """v2 deployed tokenizer (May 2026 post-hoc refinement, WINNER from sweep).
+    """v2 deployed tokenizer (May 2026 refinement; TC depth revised Aug 2026).
 
-    Combines two augmentations on top of tok_cpu:
-      1. TC truncation to 2-level family: "1.B.14.6.1" -> "1.B"
-         (closes sup/unsup format mismatch)
-      2. CAZy family augmentation (concat — keep original AND add family-only):
+    Two augmentations on top of tok_cpu:
+
+      1. TC truncation to the 3-level FAMILY: "1.B.14.6.1" -> "1.B.14"
+         TCDB numbers are class.subclass.family.subfamily.protein. Level 3 is
+         the family — "1.B.14" is the Outer Membrane Receptor family, i.e. the
+         TonB-dependent SusC-like receptors that define a PUL. That is the unit
+         that carries substrate meaning, and it is also the depth the
+         unsupervised corpus natively uses (99.9% of its 1.68 M TC tokens are
+         3-level, vs 32.4% of supervised ones), so truncating to 3 aligns the
+         two corpora exactly.
+
+         This replaces an earlier 2-level variant ("1.B"). Two levels collapsed
+         596 distinct families into 26 tokens — 2.A alone swallowed 106
+         families, 1.B swallowed 73 — which is biologically meaningless. It
+         scored a flattering unsupervised OOV (7.4% vs 16.5%) precisely BECAUSE
+         the vocabulary had been reduced to almost nothing, and it was no more
+         accurate: 5x5 RSKF 0.9151 +/- 0.0189 at 2-level vs 0.9163 +/- 0.0167
+         at 3-level. The 2-level form is retained as tok_cpu_tc2 for provenance.
+
+      2. CAZy family augmentation (keep original AND add family-only):
          "GH13" -> ["GH13", "GH"]    "AA17" -> ["AA17", "AA"]
-         (gives a fallback match for novel CAZy families never seen in sup,
-          like AA17, CBM50 — they still hit the family prefix "AA"/"CBM")
+         Gives novel CAZy families never seen in supervised data a fallback
+         match on the family prefix. Because this feeds a CountVectorizer, the
+         family token's COUNT also becomes a feature ("how many GH genes").
 
     Example:
-        "1.B.14.6.1,GH5_4,CBM6|null" -> ["1.B", "GH5", "GH", "4", "CBM6", "CBM", "null"]
+        "1.B.14.6.1,GH5_4,CBM6|null" -> ["1.B.14", "GH5", "GH", "4", "CBM6", "CBM", "null"]
 
-    Vs original tok_cpu:
-        Supervised 5-fold acc: 0.9039 -> 0.9087 (+0.5 pp, within noise but on
-                                                  the right side)
-        Vocab size: 517 -> 306 (41% smaller — TC truncation collapses TC
-                                subfamilies)
-        Mean tokens/sup PUL: 12.6 -> 16.4 (+30% from CAZy augmentation)
-        Mean tokens/unsup PUL: 6.2 -> 8.0 (+29%)
-        Unsup mean OOV: 21.79% -> 5.36% (4x reduction)
-        Unsup PULs in trust band (OOV <= 10%): 37.2% -> 77.5% (more than 2x)
-
-    This is the recommended tokenizer for the deployment refinement
-    (artifacts/final_model_v2.pkl). The original tok_cpu is preserved for
-    backward compatibility with artifacts/final_model.pkl.
+    A matching TC-family fallback (emitting "1.B" alongside "1.B.14", mirroring
+    GH13 -> GH) was tested and rejected: 0.9148 +/- 0.0132, slightly worse than
+    plain 3-level. The coarse token only dilutes the signal.
     """
     out = []
     for t in _COMMA_PIPE_UNDERSCORE.split(str(s)):
         if not t: continue
-        # TC truncation: 1.B.14.6.1 -> 1.B
         if _TC_HEAD.match(t):
             parts = t.split(".")
-            out.append(".".join(parts[:2]) if len(parts) >= 2 else t)
+            out.append(".".join(parts[:3]) if len(parts) >= 3 else t)
             continue
-        # CAZy augmentation: GH13 -> [GH13, GH]
         m = _CAZY_FAMILY_RE.match(t)
         if m:
-            out.append(t)            # keep original (GH13)
-            out.append(m.group(1))    # add family prefix (GH)
+            out.append(t)
+            out.append(m.group(1))
             continue
         out.append(t)
     return out

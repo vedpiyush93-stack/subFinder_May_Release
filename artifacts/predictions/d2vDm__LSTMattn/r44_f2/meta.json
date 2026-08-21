@@ -1,9 +1,0 @@
-{
-  "shorthand": "d2vDm__LSTMattn",
-  "seed": 44,
-  "fold": 2,
-  "test_acc": 0.7961165048543689,
-  "wall_sec": 9.89297103881836,
-  "n_test": 206,
-  "n_train": 824
-}

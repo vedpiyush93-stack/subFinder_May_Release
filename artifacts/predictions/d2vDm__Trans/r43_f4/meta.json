@@ -1,9 +1,0 @@
-{
-  "shorthand": "d2vDm__Trans",
-  "seed": 43,
-  "fold": 4,
-  "test_acc": 0.7233009708737864,
-  "wall_sec": 21.680989980697632,
-  "n_test": 206,
-  "n_train": 824
-}

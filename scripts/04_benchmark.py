@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Aggregate all 29 trained configurations into a single leaderboard.
+"""Aggregate all 25 trained configurations into a single leaderboard.
 
 Walks artifacts/predictions/*/r*_f*/meta.json, computes per-config 5×5 RSKF
 means/stds and per-substrate F1 for the top model. Writes:
 
-    artifacts/leaderboard.csv      29-row leaderboard, sorted by mean acc desc
-    artifacts/per_fold_metrics.csv full per-trial CSV (already exists; verify)
+    artifacts/leaderboard.csv      25-row leaderboard, sorted by mean acc desc
+
+Per-trial rows live in artifacts/per_fold_metrics.csv, which this script does
+NOT write — run scripts/04b_rebuild_per_fold_metrics.py after any re-training.
+07/08/09 prefer that CSV over the raw meta.json files, so leaving it stale
+silently propagates old numbers into the paper tables, figures and decks.
 
 Usage:
     python scripts/04_benchmark.py

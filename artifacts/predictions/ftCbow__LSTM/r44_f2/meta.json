@@ -2,8 +2,11 @@
   "shorthand": "ftCbow__LSTM",
   "seed": 44,
   "fold": 2,
-  "test_acc": 0.7330097087378641,
-  "wall_sec": 68.48148894309998,
+  "test_acc": 0.7524271844660194,
+  "wall_sec": 13.606586933135986,
   "n_test": 206,
-  "n_train": 824
+  "n_train": 824,
+  "device": "gpu",
+  "backend": "metal (Apple MPS)",
+  "tensorflow": "2.18.0"
 }

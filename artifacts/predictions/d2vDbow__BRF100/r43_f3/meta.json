@@ -2,8 +2,8 @@
   "shorthand": "d2vDbow__BRF100",
   "seed": 43,
   "fold": 3,
-  "test_acc": 0.7912621359223301,
-  "wall_sec": 1.668733835220337,
+  "test_acc": 0.8203883495145631,
+  "wall_sec": 1.715268850326538,
   "n_test": 206,
   "n_train": 824
 }

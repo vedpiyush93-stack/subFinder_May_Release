@@ -21,17 +21,22 @@
 
 | Metric | Value | Source |
 |---|---:|---|
-| Test accuracy (rep_1, 5×5 RSKF, n=725) | **0.9066 ± 0.0174** | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
-| **Cross-rep mean (5 reps × 25 trials, fixed splits)** | **0.9063 ± 0.0006** (range 0.9052–0.9068) | [`docs/tables/tab_cross_rep_stability.csv`](docs/tables/tab_cross_rep_stability.csv) |
-| Top-7 rank stability across 5 reps | **5/7 ranks identical** in every rep (single #6/#7 swap in rep_3) | [`docs/tables/tab_cross_rep_top7_ranking.csv`](docs/tables/tab_cross_rep_top7_ranking.csv) |
+| Test accuracy (5×5 RSKF, n=625 fits) | **0.9066 ± 0.0174** | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
 | Top-3 cumulative accuracy | **0.976** | [`docs/tables/tab_rank_redemption.csv`](docs/tables/tab_rank_redemption.csv) |
 | High-confidence (≥0.8) accuracy | **97.4 %** on 67 % of PULs | [`docs/tables/tab_confidence_vs_correct.csv`](docs/tables/tab_confidence_vs_correct.csv) |
 | Gap vs paper BRF baseline | **+6.64 pp** (paired *t*, p ≈ 5×10⁻¹⁴) | [`paper/audit_output.txt`](paper/audit_output.txt) |
-| Gap vs best published deep model | **+11.83 pp** | [`paper/audit_output.txt`](paper/audit_output.txt) |
+| Gap vs best deep model | **+11.77 pp** | [`paper/audit_output.txt`](paper/audit_output.txt) |
 | ECE (10-bin) after T-scaling | 0.094 → **0.029** | [`artifacts/calibration_report.csv`](artifacts/calibration_report.csv) |
 | Per-PUL sig-gene hit rate (TRUE-class, K=3) | **768/837 = 91.8 %** | [`paper/tables/`](paper/tables/) |
 
-> **Model uncertainty in one number:** the winner's accuracy moves by ≤ 0.0016 across 5 independent re-trainings with different model-init seeds (`REPRO_REP_SEED=1000/2000/3000/4000/5000`, data splits held fixed). Per-family median cross-rep std: OvR(ExtraTrees) **0.0006** · OvR(BalancedRF) 0.0027 · DL families 0.0047–0.0064 — our shallow winner is 8–10× more reproducible than any DL baseline.
+> **On model-init variance.** Earlier releases shipped a 5-rep suite that re-trained
+> everything under `REPRO_REP_SEED=1000/2000/3000/4000/5000` to quantify how much the
+> winner moves when only the trainer seed changes. That suite was retired in Aug 2026
+> along with the per-fold embeddings it was built on, so **this release does not
+> measure model-init variance** and makes no claim about it. What it does establish is
+> exact reproducibility at a fixed seed: with `REPRO_REP_SEED=1000`, all 25 folds of
+> `cpu__ET500_log2` reproduce bit-identically. Re-running the suite is a matter of
+> looping the seed — nothing in the pipeline prevents it.
 
 **Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (25 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
 **Want to browse every individual test PUL?** Open [`docs/per_pul_report.html`](docs/per_pul_report.html) — 13 tabs (overview + one per substrate), every test PUL with full calibrated probabilities, p-values, signature genes, literature-match badges, and per-fold OOV.
@@ -191,10 +196,20 @@ label at all.
 `cpu__ET500_log2` uses only CountVectorizer features — no embeddings needed.
 
 ```bash
+export REPRO_REP_SEED=1000      # REQUIRED to reproduce the shipped numbers
 python3 scripts/02_train_shallow.py --only cpu__ET500_log2 --retrain
 python3 scripts/05_calibrate_best.py
 python3 scripts/04_benchmark.py
 ```
+
+> **`REPRO_REP_SEED=1000` is not optional.** `artifacts/` *is* rep_1: every shipped
+> classifier there was fitted with `random_state=1000`, which is what the headline
+> 0.9066 refers to. The environment variable defaults to **42**, so running these
+> commands without exporting it silently trains a different model — reproducing
+> 0.9058 instead of 0.9066, differing on 1–3 PULs in 13 of the 25 folds. Nothing
+> warns you; the split, the vocabulary (488 tokens) and the feature matrix are all
+> bit-identical, only the ExtraTrees model init differs. Verified: with the seed
+> exported, fold r42_f0 reproduces 0.898058 exactly.
 
 ### C.3 — Retrain any embedding-using config
 
@@ -268,7 +283,6 @@ subFinder_May_Release/
 │   ├── leaderboard.csv      25-row sorted leaderboard
 │   ├── per_fold_metrics.csv 625-row per-trial CSV
 │   └── final_model.pkl      deployed calibrated model (LFS)
-├── reproducibility/         model-init reproducibility harness (see the cross-rep note below)
 ├── paper/                   PDFs + 12 source tables + audit_output.txt
 ├── docs/                    deck.pptx + deck.html + figures/ + tables/
 └── tests/                   leak_audit.py + verify_reduced_embedding_files.py
@@ -376,8 +390,7 @@ Reproduce the drift experiment: `python3 scripts/experiments/measure_t_drift.py 
 | Family | Count | Size each | What it is |
 |---|---:|---:|---|
 | `artifacts/predictions/*/r*_f*/classifier.{joblib,keras}` | 625 | 1–45 MB | per-trial classifier weights |
-| `reproducibility/rep_*/predictions/.../classifier.{joblib,keras}` | per rep | same | per-rep classifier weights |
-| `artifacts/final_model.pkl` + `reproducibility/{rep_*,inference}/final_model.pkl` | 1 each | ~180 MB | calibrated deployed model |
+| `artifacts/final_model.pkl` | 1 | ~180 MB | calibrated deployed model (v1) |
 
 The 100 FastText n-gram tables that used to dominate this list (~186 GB) are gone:
 the six embeddings now ship as ~38 MB of ordinary git files in `artifacts/embeddings/`.
@@ -389,26 +402,36 @@ See §C.4 for why the 2.24 GB hash table was 99.45 % unreachable.
 
 ---
 
-## Post-hoc refinement (May 2026) — `v2` tokenizer for cross-domain generalization
+## Post-hoc refinement — `v2` tokenizer for cross-domain generalization
 
-After applying the deployed model to the 358,751-PUL unsupervised pre-training corpus (see [`unravel/`](unravel/)), we noticed many unsupervised PULs were flagged as **out-of-vocabulary (OOV)** even though they shared the same underlying biology with supervised PULs. Root cause: **format mismatches** between the two corpora:
+After applying the deployed model to the 359,763-PUL unsupervised pre-training corpus (see [`unravel/`](unravel/)), many unsupervised PULs were flagged **out-of-vocabulary (OOV)** despite sharing biology with supervised PULs. Root cause: **format mismatches** between the corpora.
 
-- **TC numbers** — supervised data uses a mix of 5-level (`1.B.14.6.1`) and 3-level (`1.B.14`) formats; the unsupervised corpus has **only** 3-level. So `1.B.14.6.1` in a supervised PUL never matches any unsupervised PUL, even though it represents the same transporter biology.
-- **CAZy subfamilies** — supervised never saw `AA17`, `CBM50`, etc., so those novel families in unsupervised PULs become OOV with no fallback.
+- **TC numbers** — supervised data mixes 5-level (`1.B.14.6.1`) and 3-level (`1.B.14`) formats; the unsupervised corpus is **99.9 % 3-level** (1,677,571 of 1,678,991 TC tokens). A 5-level supervised token therefore never matches an unsupervised one, though both describe the same transporter.
+- **CAZy subfamilies** — supervised never saw `AA17`, `CBM50`, etc., so novel families in unsupervised PULs go OOV with no fallback.
 
-We swept 13 token-transformation strategies on the **same winning config** (`cpu__ET500_log2` = CountVec + OvR-ExtraTrees-500). The winner is a tokenizer we call **`tok_cpu_v2`** that:
+`tok_cpu_v2` fixes both:
 
-1. **Truncates TC numbers to 2-level family** (`1.B.14.6.1` → `1.B`) — closes the format gap.
-2. **Augments CAZy tokens with family-only fallback** (`GH13` → keep `GH13` AND add `GH`) — gives novel CAZy families a fallback match.
+1. **Truncate TC numbers to the 3-level family** (`1.B.14.6.1` → `1.B.14`).
+2. **Augment CAZy tokens with a family-only fallback** (`GH13` → keep `GH13` **and** add `GH`).
 
-| | original `tok_cpu` | refined `tok_cpu_v2` | Δ |
-|---|---:|---:|---:|
-| **5-rep cross-rep mean ± std** (full 5×5 RSKF × 5 seeds) | **0.9063 ± 0.0006** | **0.9145 ± 0.0005** | **+0.82 pp** ✓ |
-| Per-rep means | 0.9066 / 0.9068 / 0.9064 / 0.9064 / 0.9052 | **0.9150 / 0.9151 / 0.9142 / 0.9142 / 0.9140** | every rep higher |
-| Deployed vocab size | 517 | **306** | 41% smaller ✓ |
-| Unsupervised mean OOV | 21.79% | **5.36%** | **4× lower** ✓ |
-| Unsup PULs in trust band (OOV ≤ 10%) | 37.2% | **77.5%** | **+40 pp** ✓ |
-| Unsup PULs at OOV ≤ 25% | 71.2% | **96.2%** | **+25 pp** ✓ |
+| | original `tok_cpu` | refined `tok_cpu_v2` |
+|---|---:|---:|
+| 5×5 RSKF accuracy | 0.9066 ± 0.0174 | **0.9150 ± 0.0167** |
+| Deployed vocab size | 517 | **360** |
+| Unsupervised mean OOV | 21.3 % | **16.5 %** |
+| Unsup PULs at OOV ≤ 10 % | 29.6 % | **37.4 %** |
+
+### Why 3 levels and not 2
+
+Until Aug 2026 this truncated to the **2-level** subclass (`1.B.14.6.1` → `1.B`). That was wrong, and the correction matters more than the accuracy table suggests.
+
+TCDB numbers are `class.subclass.family.subfamily.protein`. **Level 3 is the family** — `1.B.14` is the Outer Membrane Receptor family, i.e. the TonB-dependent SusC-like receptors that define a PUL. Level 2 is merely "β-barrel porin". Truncating to 2 collapsed **596 distinct families into 26 tokens**: `2.A` alone swallowed 106 families, `9.B` 133, `1.B` 73.
+
+That variant reported a far better unsupervised OOV (5.4 % vs 16.5 %), which looked like superior generalization but was an artifact — OOV is near-zero when the vocabulary has been reduced to almost nothing. On the measure that matters it was **not better**: 0.9151 ± 0.0189 at 2-level versus 0.9150 ± 0.0167 at 3-level, statistically indistinguishable, with 3-level slightly more stable across folds. Given equal accuracy, the version that preserves 596 biological families wins.
+
+Three levels also matches the unsupervised corpus's native format exactly, which is what closes the format gap in the first place.
+
+A TC-family fallback mirroring the CAZy trick (emitting `1.B` alongside `1.B.14`) was tested and **rejected**: 0.9148 ± 0.0132, marginally worse. The coarse token only dilutes the signal. The 2-level form is retained as `tok_cpu_tc2` for provenance.
 
 **Additive — original deployed model unchanged:** the refinement ships as a SEPARATE artifact [`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl); the original [`artifacts/final_model.pkl`](artifacts/final_model.pkl) is preserved and remains the default. Both versions are bundled in-repo and ready to use:
 
@@ -420,11 +443,11 @@ python3 scripts/06_inference.py --seq "GH13,CBM6|null" --pretty
 python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13,CBM6|null" --pretty
 ```
 
-**Self-contained distribution.** The 6 v2 model bundles ([`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl) + [`reproducibility/rep_{1..5}_v2/final_model.pkl`](reproducibility/)) are saved with `joblib.dump(..., compress=("xz", 6))`, which shrinks each from 144 MB to **~20 MB** (~120 MB total across all 6) and stays well under GitHub's 100 MB per-file limit — so they're tracked via regular git, **no LFS**. Loading is transparent: `joblib.load("artifacts/final_model_v2.pkl")` auto-detects the xz wrapper and decompresses on read, so no inference code changes. The full 5-rep stability suite (5 reps × 5×5 RSKF = 125 fits) is also regenerable from scratch in ~90 s/rep via `scripts/13_train_tc2_refinement.py` + `scripts/13b_run_tc2_reproducibility.py`; aggregate stats live in [`reproducibility/v2_cross_rep_summary.json`](reproducibility/v2_cross_rep_summary.json).
+**Self-contained distribution.** [`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl) is saved with `joblib.dump(..., compress=("xz", 6))`, shrinking it from 144 MB to **~20 MB** — tracked via regular git, **no LFS**. Loading is transparent: `joblib.load()` auto-detects the xz wrapper, so no inference code changes. Rebuild in ~90 s with `python3 scripts/13_train_tc2_refinement.py`.
 
-**V2 signature-gene PR (lit-canon validation).** [`scripts/13c_v2_sig_gene_pr.py`](scripts/13c_v2_sig_gene_pr.py) runs the same leave-one-token-out ablation as the v1 paper analysis but with `tok_cpu_v2`, then scores top-3 sig-genes against a **family-augmented** literature canon (for every specific canon token like `GH13` it also adds the family prefix `GH` as a canonical family fallback). Result on the 5-fold seed-42 OOF (935/1,030 = 90.8% test accuracy): **813/1,028 PULs (79.1%) hit a lit-canonical signal in top-3** — 749 via specific token, **64 extra rescued by the family fallback**. Gene-view scope recall: specific tokens 92/173 = 53.2%, **family fallbacks 24/31 = 77.4%** (higher because there are fewer competitors at the family level — confirms the augmented family tokens carry consistent substrate-specific signal). Outputs: [`paper/tables/table12_v2_per_substrate_sig_pr.csv`](paper/tables/table12_v2_per_substrate_sig_pr.csv) (12 substrates × 14 cols, supplement Table S5b), [`paper/tables/table12_v2_aggregate_sig_pr.csv`](paper/tables/table12_v2_aggregate_sig_pr.csv) (aggregate), [`artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv`](artifacts/ablation/) (per-PUL top-K).
+**V2 signature-gene PR (lit-canon validation).** [`scripts/13c_v2_sig_gene_pr.py`](scripts/13c_v2_sig_gene_pr.py) runs the same leave-one-token-out ablation as the v1 paper analysis but with `tok_cpu_v2`, then scores top-3 sig-genes against a **family-augmented** literature canon (for every specific canon token like `GH13` it also adds the family prefix `GH` as a canonical family fallback). Result on the 5-fold seed-42 OOF: **804/1,028 PULs (78.2%) hit a lit-canonical signal in top-3** — 739 via specific token, **65 extra rescued by the family fallback**. Gene-view scope recall: specific tokens 96/173 = 55.5%, **family fallbacks 24/31 = 77.4%** (higher because there are fewer competitors at the family level — confirms the augmented family tokens carry consistent substrate-specific signal). Outputs: [`paper/tables/table12_v2_per_substrate_sig_pr.csv`](paper/tables/table12_v2_per_substrate_sig_pr.csv) (12 substrates × 14 cols, supplement Table S5b), [`paper/tables/table12_v2_aggregate_sig_pr.csv`](paper/tables/table12_v2_aggregate_sig_pr.csv) (aggregate), [`artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv`](artifacts/ablation/) (per-PUL top-K).
 
-**V2 trust calibrator.** The unravel trust score (the per-PUL probability that a prediction is correct, given conf / OOV / lit-canon support / Jaccard-to-labeled-neighbor) was retrained for v2 — the original calibrator's coefficients were fit against v1's OOV and vocab distributions, so applying it directly to v2 would give biased scores (v2's mean OOV is 4× lower). Build with `python3 unravel/filtering/build_trust_calibrator.py --v2`; apply to v2 HTMLs with `python3 unravel/filtering/apply_trust_v2.py --v2`. The v1 calibrator is preserved at the original paths; the v2 calibrator ships as `unravel/filtering/trust_calibrator_v2.pkl`, `trust_significance_v2.json`, `trust_extrapolation_ranges_v2.json`, `trust_training_set_v2.csv`. Same 13-candidate feature set, same significance+intuition filter — only the model weights and per-feature [P1, P99] extrapolation bands change.
+**V2 trust calibrator.** The unravel trust score (the per-PUL probability that a prediction is correct, given conf / OOV / lit-canon support / Jaccard-to-labeled-neighbor) was retrained for v2 — the original calibrator's coefficients were fit against v1's OOV and vocab distributions, so applying it directly to v2 would give biased scores (v2's OOV and vocabulary distributions differ). Build with `python3 unravel/filtering/build_trust_calibrator.py --v2`; apply to v2 HTMLs with `python3 unravel/filtering/apply_trust_v2.py --v2`. The v1 calibrator is preserved at the original paths; the v2 calibrator ships as `unravel/filtering/trust_calibrator_v2.pkl`, `trust_significance_v2.json`, `trust_extrapolation_ranges_v2.json`, `trust_training_set_v2.csv`. Same 13-candidate feature set, same significance+intuition filter — only the model weights and per-feature [P1, P99] extrapolation bands change.
 
 **Strategy sweep documentation:** [`unravel/experiments/`](unravel/experiments/) contains the full 13-strategy comparison, dimensionality analysis, and `report.md` with the rationale. Curator-shareable artifacts: [`unravel/experiments/curator_brief.md`](unravel/experiments/curator_brief.md) (crisp 4-section brief, with same-family TC-depth examples and OOV impact tables) and [`unravel/experiments/curator_format_report.md`](unravel/experiments/curator_format_report.md) (full narrative).
 

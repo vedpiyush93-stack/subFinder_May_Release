@@ -2,8 +2,11 @@
   "shorthand": "w2vSg__JustAttn",
   "seed": 42,
   "fold": 0,
-  "test_acc": 0.7427184466019418,
-  "wall_sec": 25.678937196731567,
+  "test_acc": 0.7524271844660194,
+  "wall_sec": 23.701223850250244,
   "n_test": 206,
-  "n_train": 824
+  "n_train": 824,
+  "device": "gpu",
+  "backend": "metal (Apple MPS)",
+  "tensorflow": "2.18.0"
 }

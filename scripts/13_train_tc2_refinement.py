@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""Post-hoc refinement (May 2026): retrain the deployed config
-cpu__ET500_log2 with the TC-truncated tokenizer (tok_cpu_tc2).
+"""Post-hoc refinement: retrain the deployed config cpu__ET500_log2 with the
+refined tokenizer (tok_cpu_v2).
 
 Same model architecture (CountVec + OvR ExtraTrees-500). Same training data
 (all 1030 supervised PULs). Same calibration protocol (inner-CV5 temperature
-scaling). Only difference: tokenizer is tok_cpu_tc2 instead of tok_cpu,
-collapsing TC numbers like 1.B.14.6.1 -> 1.B to close the supervised/unsupervised
-format mismatch.
+scaling). Only difference: tokenizer is tok_cpu_v2 instead of tok_cpu, which
+truncates TC numbers to their 3-level FAMILY (1.B.14.6.1 -> 1.B.14) and adds a
+CAZy family fallback (GH13 -> GH13 + GH).
+
+TC depth revised Aug 2026 from 2-level to 3-level. Level 3 is the TCDB family
+(1.B.14 = the TonB-dependent SusC-like receptors) and is the depth the
+unsupervised corpus natively uses (99.9% of its TC tokens), so it aligns the
+corpora without discarding biology. The previous 2-level form collapsed 596
+families into 26 tokens and was no more accurate (0.9151 vs 0.9163 on 5x5 RSKF).
 
 ADDITIVE: this script writes a NEW file artifacts/final_model_v2.pkl
 without touching the original artifacts/final_model.pkl. Both models remain
 available; the original is still the default for scripts/06_inference.py.
 Use --model artifacts/final_model_v2.pkl to load the refined version.
 
-Result vs original (measured by unravel/experiments/run_token_strategies.py):
-  - Supervised 5-fold CV acc: 0.9039 -> 0.9097 (+0.6 pp)
-  - Unsupervised mean OOV (vs deployed vocab): 20.23% -> 8.35% (-12 pp)
-  - Unsupervised PULs at OOV <= 10%: 30.8% -> 69.0% (+38 pp)
-  - Deployed vocab size: 517 -> 300 tokens
+Result vs original tok_cpu (5x5 RSKF, OvR-ExtraTrees-500):
+  - Supervised accuracy:  0.9066 -> 0.9163
+  - Deployed vocab size:  517 -> 360 tokens
+  - Unsupervised mean OOV: 21.3% -> 16.5%
 
 Usage:
     python3 scripts/13_train_tc2_refinement.py
@@ -36,7 +41,7 @@ from src.calibration.temperature import fit_temperature_inner_cv
 
 OUT_PKL = ROOT / "artifacts" / "final_model_v2.pkl"
 
-print("[tc2] loading data + setting up winner config with tok_cpu_tc2 ...")
+print("[v2] loading data + setting up winner config with tok_cpu_v2 ...")
 df = pd.read_csv(ROOT / "data/Train_data.csv")
 X = df["sig_gene_seq"].fillna("").values
 y = df["high_level_substr"].values

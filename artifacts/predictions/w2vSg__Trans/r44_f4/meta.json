@@ -3,7 +3,10 @@
   "seed": 44,
   "fold": 4,
   "test_acc": 0.7621359223300971,
-  "wall_sec": 25.270537853240967,
+  "wall_sec": 33.09248399734497,
   "n_test": 206,
-  "n_train": 824
+  "n_train": 824,
+  "device": "gpu",
+  "backend": "metal (Apple MPS)",
+  "tensorflow": "2.18.0"
 }

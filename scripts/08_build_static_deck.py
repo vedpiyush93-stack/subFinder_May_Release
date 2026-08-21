@@ -1018,7 +1018,7 @@ time_fam_agg = df_pf_c.assign(cf=df_pf_c.shorthand.apply(lambda s: decode_shorth
     .reset_index().rename(columns={"cf": "classifier_family"}).sort_values("wall_mean")
 GRAND_TOTAL_SEC = float(df_pf_c.wall_sec.sum())
 time_fam_agg.to_csv(TAB/"tab_training_time_per_family.csv", index=False)
-print(f"  grand total training wall time across all 725 fits: {GRAND_TOTAL_SEC:.0f} s = {GRAND_TOTAL_SEC/3600:.2f} h")
+print(f"  grand total training wall time across all 625 fits: {GRAND_TOTAL_SEC:.0f} s = {GRAND_TOTAL_SEC/3600:.2f} h")
 
 # Fig 10: training time per family
 print("[deck] Fig 10: training time per family ...")
@@ -1035,7 +1035,7 @@ for i, (_, r) in enumerate(time_fam_agg.iterrows()):
             va="center", fontsize=10, color=CHARCOAL)
 ax.set_xlabel("Mean wall-clock seconds per (seed, fold) trial")
 ax.set_xlim(0, time_fam_agg.wall_mean.max() * 1.45)
-ax.set_title(f"Training time per classifier family — grand total over 725 fits: {GRAND_TOTAL_SEC:.0f} s = {GRAND_TOTAL_SEC/3600:.2f} h",
+ax.set_title(f"Training time per classifier family — grand total over 625 fits: {GRAND_TOTAL_SEC:.0f} s = {GRAND_TOTAL_SEC/3600:.2f} h",
              loc="left", fontsize=13)
 plt.tight_layout()
 plt.savefig(FIG/"fig10_training_time.png"); plt.close()
@@ -1137,7 +1137,7 @@ rows = [
     ("Embeddings retrained per fold (6)", "FastText cbow/sg, Word2Vec cbow/sg, Doc2Vec dm/dbow — leak-free (test tokens never enter embedding training)"),
     ("Classifiers", "OvR(BalancedRF n=100) baseline; OvR(ExtraTrees n=500 log2/sqrt) ours; 4 DL architectures from paper (vanilla LSTM, LSTM+attention, just-attention, 4-block transformer)"),
     ("Hyperparameters", "Paper-verbatim for shallow + DL except batch (DL_BATCH=1024, Transformer=4096 for M4 Max throughput); EarlyStopping patience=30, validation 25%, Adam 1e-4"),
-    ("Total", "25 configs × 25 trials = 725 fits; global frozen embeddings = reproducible to ~1e-3 on DL, bit-identical on sklearn"),
+    ("Total", "25 configs × 25 trials = 625 fits; global frozen embeddings = reproducible to ~1e-3 on DL, bit-identical on sklearn"),
 ]
 for i, (k, v) in enumerate(rows):
     p = tf.add_paragraph() if i else tf.paragraphs[0]
@@ -1553,7 +1553,7 @@ add_footer(s)
 # Slide A4 — APPENDIX: Training time per classifier family
 s = prs.slides.add_slide(BLANK)
 add_title(s, "Appendix · Training time per classifier family")
-add_subtitle(s, f"Why our shallow winner is cheap. Grand total across all 725 fits: {GRAND_TOTAL_SEC:.0f} s = {GRAND_TOTAL_SEC/3600:.2f} h on Apple M4 Max")
+add_subtitle(s, f"Why our shallow winner is cheap. Grand total across all 625 fits: {GRAND_TOTAL_SEC:.0f} s = {GRAND_TOTAL_SEC/3600:.2f} h on Apple M4 Max")
 add_image_centered(s, FIG/"fig10_training_time.png", top=1.5, max_h=3.6)
 # Add a callout textbox below
 callout_tx = s.shapes.add_textbox(Inches(0.6), Inches(5.4), Inches(12.0), Inches(1.6))

@@ -2,8 +2,8 @@
   "shorthand": "w2vCbow__BRF100",
   "seed": 42,
   "fold": 1,
-  "test_acc": 0.8300970873786407,
-  "wall_sec": 1.6061999797821045,
+  "test_acc": 0.8058252427184466,
+  "wall_sec": 1.6719958782196045,
   "n_test": 206,
   "n_train": 824
 }

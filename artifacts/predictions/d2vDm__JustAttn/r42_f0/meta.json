@@ -1,9 +1,0 @@
-{
-  "shorthand": "d2vDm__JustAttn",
-  "seed": 42,
-  "fold": 0,
-  "test_acc": 0.7378640776699029,
-  "wall_sec": 19.61695122718811,
-  "n_test": 206,
-  "n_train": 824
-}
