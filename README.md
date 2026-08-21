@@ -24,10 +24,10 @@
 | Test accuracy (5×5 RSKF, n=625 fits) | **0.9066 ± 0.0174** | [`artifacts/leaderboard.csv`](artifacts/leaderboard.csv) |
 | Top-3 cumulative accuracy | **0.976** | [`docs/tables/tab_rank_redemption.csv`](docs/tables/tab_rank_redemption.csv) |
 | High-confidence (≥0.8) accuracy | **97.4 %** on 67 % of PULs | [`docs/tables/tab_confidence_vs_correct.csv`](docs/tables/tab_confidence_vs_correct.csv) |
-| Gap vs paper BRF baseline | **+6.64 pp** (paired *t*, p ≈ 5×10⁻¹⁴) | [`paper/audit_output.txt`](paper/audit_output.txt) |
-| Gap vs best deep model | **+11.77 pp** | [`paper/audit_output.txt`](paper/audit_output.txt) |
+| Gap vs paper BRF baseline | **+6.64 pp** (paired *t*, p ≈ 5×10⁻¹⁴) | `paper/audit_output.txt` |
+| Gap vs best deep model | **+11.77 pp** | `paper/audit_output.txt` |
 | ECE (10-bin) after T-scaling | 0.094 → **0.029** | [`artifacts/calibration_report.csv`](artifacts/calibration_report.csv) |
-| Per-PUL sig-gene hit rate (TRUE-class, K=3) | **768/837 = 91.8 %** | [`paper/tables/`](paper/tables/) |
+| Per-PUL sig-gene hit rate (TRUE-class, K=3) | **768/837 = 91.8 %** | `paper/tables/` |
 
 > **On model-init variance.** Earlier releases shipped a 5-rep suite that re-trained
 > everything under `REPRO_REP_SEED=1000/2000/3000/4000/5000` to quantify how much the
@@ -41,9 +41,15 @@
 **Want the visuals?** Open [`docs/deck.html`](docs/deck.html) (25 interactive slides) or [`docs/deck.pptx`](docs/deck.pptx).
 **Want to browse every individual test PUL?** Open [`docs/per_pul_report.html`](docs/per_pul_report.html) — 13 tabs (overview + one per substrate), every test PUL with full calibrated probabilities, p-values, signature genes, literature-match badges, and per-fold OOV.
 
-**Want to see what the deployed model says about *unlabeled* PULs?** Browse the [`unravel/`](unravel/) folder — 358,751 unique PULs from the unsupervised pre-training corpus run through the deployed model, with **350,349 evaluable** (token-count + ≥1-CAZy filter; OOV is no longer a hard filter, it's a slider).
+> **Not in this repository yet.** The `unravel/` views, the manuscript sources
+> (`paper/`) and the slide decks (`presentations/`) are held back while they are
+> revised against the rebuilt benchmark — the v2 unravel HTMLs in particular still
+> reflect the previous 2-level TC tokenizer. They will land in a later commit.
+> Everything needed to reproduce the numbers below is here.
 
-Entry point: [`unravel/index.html`](unravel/index.html) (Overview tab) → per-substrate page links → live filters / sort / histograms / trust-calibrator score on every PUL.
+**Want to see what the deployed model says about *unlabeled* PULs?** Browse the `unravel/` folder — 358,751 unique PULs from the unsupervised pre-training corpus run through the deployed model, with **350,349 evaluable** (token-count + ≥1-CAZy filter; OOV is no longer a hard filter, it's a slider).
+
+Entry point: `unravel/index.html` (Overview tab) → per-substrate page links → live filters / sort / histograms / trust-calibrator score on every PUL.
 
 Each substrate page (e.g. `unravel/alpha-glucan.html`) shows:
 - **Live filter bar** — tier checkboxes, confidence ≥ X, out-of-vocab ≤ Y, Jaccard agreement, trust ≥ Z, hide-extrapolation, asc/desc sort dropdown
@@ -60,7 +66,7 @@ python3 unravel/filtering/apply_trust_to_unravel.py        # ~30 s (scores each 
 bash unravel/unravel_status.sh                              # live progress monitor
 ```
 
-All committed scripts/JSONs live in [`unravel/filtering/`](unravel/filtering/) for full reproducibility.
+All committed scripts/JSONs live in `unravel/filtering/` for full reproducibility.
 
 ---
 
@@ -154,7 +160,7 @@ python3 scripts/09_build_interactive_deck.py # ~10 s  docs/deck.html
 jupyter nbconvert --to notebook --execute --inplace notebooks/build_paper_artifacts.ipynb
 ```
 
-Every `\textbf{...}` in the PDFs maps to one key in [`paper/audit_output.txt`](paper/audit_output.txt). Sample:
+Every `\textbf{...}` in the PDFs maps to one key in `paper/audit_output.txt`. Sample:
 
 ```
 top1_acc                                        0.9066
@@ -342,7 +348,7 @@ calibration: temperature scaling — one scalar T per outer fold,
 
 The win is almost entirely from the classifier swap (BRF → OvR ExtraTrees). Two `BalancedRandomForestClassifier` design choices hurt on a small 12-class dataset: bootstrap-balanced sampling discards majority-class signal per tree, and the 100-tree ensemble is too small to recover the variance. OvR ExtraTrees-500 with `class_weight='balanced'` fixes both.
 
-Full per-substrate / per-fold metrics: [`paper/tables/`](paper/tables/) and Supplement Tables S2–S10.
+Full per-substrate / per-fold metrics: `paper/tables/` and Supplement Tables S2–S10.
 
 </details>
 
@@ -376,7 +382,7 @@ Two attribution flavors:
 | **argmax-class** (deployment) | the prediction | "What did the model think mattered for its call?" |
 | **TRUE-class** (clean test) | ground-truth substrate | "Did the model attribute correctly when given the right answer?" |
 
-**Headline (TRUE-class, K=3):** per-PUL any-hit = **768/837 = 91.8 %**, gene-scope coverage = **109/173 = 63.0 %**. Source: [`paper/tables/table12_per_substrate_sig_pr.csv`](paper/tables/table12_per_substrate_sig_pr.csv).
+**Headline (TRUE-class, K=3):** per-PUL any-hit = **768/837 = 91.8 %**, gene-scope coverage = **109/173 = 63.0 %**. Source: `paper/tables/table12_per_substrate_sig_pr.csv`.
 
 The 75 fine-grained DB substrate names roll up to our 12 classes via [`src/lit_validation/alias_map.py`](src/lit_validation/alias_map.py) — every non-trivial group has a primary-literature citation in the supplement.
 
@@ -438,7 +444,7 @@ The bulk of what remains is the pre-rendered `unravel/` HTML views.
 
 ## Post-hoc refinement — `v2` tokenizer for cross-domain generalization
 
-After applying the deployed model to the 359,763-PUL unsupervised pre-training corpus (see [`unravel/`](unravel/)), many unsupervised PULs were flagged **out-of-vocabulary (OOV)** despite sharing biology with supervised PULs. Root cause: **format mismatches** between the corpora.
+After applying the deployed model to the 359,763-PUL unsupervised pre-training corpus (see `unravel/`), many unsupervised PULs were flagged **out-of-vocabulary (OOV)** despite sharing biology with supervised PULs. Root cause: **format mismatches** between the corpora.
 
 - **TC numbers** — supervised data mixes 5-level (`1.B.14.6.1`) and 3-level (`1.B.14`) formats; the unsupervised corpus is **99.9 % 3-level** (1,677,571 of 1,678,991 TC tokens). A 5-level supervised token therefore never matches an unsupervised one, though both describe the same transporter.
 - **CAZy subfamilies** — supervised never saw `AA17`, `CBM50`, etc., so novel families in unsupervised PULs go OOV with no fallback.
@@ -479,21 +485,21 @@ python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13
 
 **Self-contained distribution.** [`artifacts/final_model_v2.pkl`](artifacts/final_model_v2.pkl) is saved with `joblib.dump(..., compress=("xz", 6))`, shrinking it from 144 MB to **~20 MB** — tracked via regular git, **no LFS**. Loading is transparent: `joblib.load()` auto-detects the xz wrapper, so no inference code changes. Rebuild in ~90 s with `python3 scripts/13_train_tc2_refinement.py`.
 
-**V2 signature-gene PR (lit-canon validation).** [`scripts/13c_v2_sig_gene_pr.py`](scripts/13c_v2_sig_gene_pr.py) runs the same leave-one-token-out ablation as the v1 paper analysis but with `tok_cpu_v2`, then scores top-3 sig-genes against a **family-augmented** literature canon (for every specific canon token like `GH13` it also adds the family prefix `GH` as a canonical family fallback). Result on the 5-fold seed-42 OOF: **804/1,028 PULs (78.2%) hit a lit-canonical signal in top-3** — 739 via specific token, **65 extra rescued by the family fallback**. Gene-view scope recall: specific tokens 96/173 = 55.5%, **family fallbacks 24/31 = 77.4%** (higher because there are fewer competitors at the family level — confirms the augmented family tokens carry consistent substrate-specific signal). Outputs: [`paper/tables/table12_v2_per_substrate_sig_pr.csv`](paper/tables/table12_v2_per_substrate_sig_pr.csv) (12 substrates × 14 cols, supplement Table S5b), [`paper/tables/table12_v2_aggregate_sig_pr.csv`](paper/tables/table12_v2_aggregate_sig_pr.csv) (aggregate), [`artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv`](artifacts/ablation/) (per-PUL top-K).
+**V2 signature-gene PR (lit-canon validation).** [`scripts/13c_v2_sig_gene_pr.py`](scripts/13c_v2_sig_gene_pr.py) runs the same leave-one-token-out ablation as the v1 paper analysis but with `tok_cpu_v2`, then scores top-3 sig-genes against a **family-augmented** literature canon (for every specific canon token like `GH13` it also adds the family prefix `GH` as a canonical family fallback). Result on the 5-fold seed-42 OOF: **804/1,028 PULs (78.2%) hit a lit-canonical signal in top-3** — 739 via specific token, **65 extra rescued by the family fallback**. Gene-view scope recall: specific tokens 96/173 = 55.5%, **family fallbacks 24/31 = 77.4%** (higher because there are fewer competitors at the family level — confirms the augmented family tokens carry consistent substrate-specific signal). Outputs: `paper/tables/table12_v2_per_substrate_sig_pr.csv` (12 substrates × 14 cols, supplement Table S5b), `paper/tables/table12_v2_aggregate_sig_pr.csv` (aggregate), [`artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv`](artifacts/ablation/) (per-PUL top-K).
 
 **V2 trust calibrator.** The unravel trust score (the per-PUL probability that a prediction is correct, given conf / OOV / lit-canon support / Jaccard-to-labeled-neighbor) was retrained for v2 — the original calibrator's coefficients were fit against v1's OOV and vocab distributions, so applying it directly to v2 would give biased scores (v2's OOV and vocabulary distributions differ). Build with `python3 unravel/filtering/build_trust_calibrator.py --v2`; apply to v2 HTMLs with `python3 unravel/filtering/apply_trust_v2.py --v2`. The v1 calibrator is preserved at the original paths; the v2 calibrator ships as `unravel/filtering/trust_calibrator_v2.pkl`, `trust_significance_v2.json`, `trust_extrapolation_ranges_v2.json`, `trust_training_set_v2.csv`. Same 13-candidate feature set, same significance+intuition filter — only the model weights and per-feature [P1, P99] extrapolation bands change.
 
-**Strategy sweep documentation:** [`unravel/experiments/`](unravel/experiments/) contains the full 13-strategy comparison, dimensionality analysis, and `report.md` with the rationale. Curator-shareable artifacts: [`unravel/experiments/curator_brief.md`](unravel/experiments/curator_brief.md) (crisp 4-section brief, with same-family TC-depth examples and OOV impact tables) and [`unravel/experiments/curator_format_report.md`](unravel/experiments/curator_format_report.md) (full narrative).
+**Strategy sweep documentation:** `unravel/experiments/` contains the full 13-strategy comparison, dimensionality analysis, and `report.md` with the rationale. Curator-shareable artifacts: `unravel/experiments/curator_brief.md` (crisp 4-section brief, with same-family TC-depth examples and OOV impact tables) and `unravel/experiments/curator_format_report.md` (full narrative).
 
 > **⚠ `unravel/v2/` is stale as of the 3-level TC change.** Those HTMLs were
 > generated with the previous 2-level `tok_cpu_v2`, so their predictions, OOV
 > figures, trust scores and signature-gene chips still reflect that tokenizer.
-> The v1 views in [`unravel/`](unravel/) are unaffected (they use `tok_cpu` and
+> The v1 views in `unravel/` are unaffected (they use `tok_cpu` and
 > [`artifacts/final_model.pkl`](artifacts/final_model.pkl), neither of which
 > changed). Regenerate with `python3 unravel/build_unravel_report.py --v2`
 > followed by the trust-calibrator steps below.
 
-**Parallel v2 unravel view:** [`unravel/v2/index.html`](unravel/v2/) re-applies the deployed model to the same 358,751-PUL unsupervised corpus using the v2 tokenizer, producing per-substrate HTMLs alongside the originals at [`unravel/*.html`](unravel/). Sig-gene chips in the v2 view visually separate **signature tokens** (specific, e.g. `GH13`) from **signature families** (the augmented fallback, e.g. `GH`, rendered with a dashed border + `FAM` label) so reviewers can see exactly which signal came from which. Build both views with `python3 unravel/build_unravel_report.py` (v1, default) and `python3 unravel/build_unravel_report.py --v2` (v2).
+**Parallel v2 unravel view:** `unravel/v2/index.html` re-applies the deployed model to the same 358,751-PUL unsupervised corpus using the v2 tokenizer, producing per-substrate HTMLs alongside the originals at `unravel/*.html`. Sig-gene chips in the v2 view visually separate **signature tokens** (specific, e.g. `GH13`) from **signature families** (the augmented fallback, e.g. `GH`, rendered with a dashed border + `FAM` label) so reviewers can see exactly which signal came from which. Build both views with `python3 unravel/build_unravel_report.py` (v1, default) and `python3 unravel/build_unravel_report.py --v2` (v2).
 
 **Heavy unravel HTMLs (ship-as-zip).** Six per-substrate HTMLs exceed GitHub's 100 MB per-file hard limit (`unravel/{beta-glucan,host-glycan,unravel_report}.html` and the same three under `unravel/v2/`). They ship in-repo as `.zip` companions next to the original paths — total ~141 MB across all 6, vs ~1.5 GB raw — and a one-line helper restores them in place after clone:
 
@@ -501,7 +507,7 @@ python3 scripts/06_inference.py --model artifacts/final_model_v2.pkl --seq "GH13
 bash unravel/unzip_heavy.sh
 ```
 
-The helper is idempotent (skips files whose unzipped HTML is already newer than its `.zip`). After running it, open [`unravel/index.html`](unravel/index.html) or [`unravel/v2/index.html`](unravel/v2/) in a browser — every per-substrate tab renders without retraining or re-running inference.
+The helper is idempotent (skips files whose unzipped HTML is already newer than its `.zip`). After running it, open `unravel/index.html` or `unravel/v2/index.html` in a browser — every per-substrate tab renders without retraining or re-running inference.
 
 ---
 
