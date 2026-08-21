@@ -1,14 +1,13 @@
-artifacts/final_model.pkl filter=lfs diff=lfs merge=lfs -text
-# 5-rep reproducibility suite (one calibrated deploy model per rep, ~173 MB each)
-reproducibility/rep_*/final_model.pkl filter=lfs diff=lfs merge=lfs -text
-# v2 refinement bundles ship via regular git (xz-compressed to ~20 MB each).
-# This more-specific pattern overrides the LFS rule above for rep_*_v2/ paths.
-reproducibility/rep_*_v2/final_model.pkl !filter !diff !merge
-reproducibility/inference/final_model.pkl filter=lfs diff=lfs merge=lfs -text
-# Per-rep classifier weights — keras files can be 30-45 MB; joblib are smaller.
-# Tracked via regular git (under GitHub's 50 MB per-file warning), but if any
-# trial happens to exceed it the LFS rule below catches it.
-reproducibility/rep_*/predictions/**/*.keras filter=lfs diff=lfs merge=lfs -text
-artifacts/predictions/**/*.keras filter=lfs diff=lfs merge=lfs -text
-artifacts/predictions/**/*.joblib filter=lfs diff=lfs merge=lfs -text
-reproducibility/rep_*/predictions/**/*.joblib filter=lfs diff=lfs merge=lfs -text
+# This repository does not use Git LFS.
+#
+# It used to: 100 FastText n-gram tables (~186 GB) and 625 per-trial classifier
+# weights (~6.4 GB) were tracked via LFS. Both are gone — the embeddings are now
+# six global models totalling 38 MB (artifacts/embeddings/), and the per-trial
+# weights are no longer shipped because every downstream artifact reads the
+# probability matrices (probs_*.npz) and meta.json instead, which are small.
+#
+# The two deployed models are xz-compressed at save time, which puts both under
+# GitHub's 100 MB per-file limit:
+#   artifacts/final_model.pkl      173 MB -> 24 MB
+#   artifacts/final_model_v2.pkl   144 MB -> 21 MB
+# joblib.load() auto-detects the wrapper, so no inference code changes.

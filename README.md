@@ -171,7 +171,38 @@ To verify the deployed model itself: `python3 scripts/06_inference.py --seq "GH1
 
 ## Path C — Retrain or extend
 
-Everything you need (625 per-trial weights, all six embeddings, the unsupervised training corpus) is already in the cloned repo — no extra downloads, no Git LFS fetch for embeddings.
+Everything you need is in the clone — all six embeddings, the unsupervised training
+corpus, both deployed models, and every per-trial prediction. **This repository uses
+no Git LFS at all**, so `git clone` is the whole story.
+
+### What is not shipped: per-trial classifier weights
+
+The 625 trained classifiers (one per config × fold) came to 6.4 GB and are no longer
+included. Nothing downstream needs them: the leaderboard, per-fold metrics, paper
+tables, figures, decks and per-PUL report all read the probability matrices
+(`probs_test.npz` / `probs_train.npz`) and `meta.json`, which **are** tracked. Only
+[`scripts/12_build_per_pul_report.py`](scripts/12_build_per_pul_report.py) loads a
+weight file, and only the winner's.
+
+Regenerate them exactly:
+
+```bash
+export REPRO_REP_SEED=1000                     # required — see the note in C.2
+
+python3 scripts/02_train_shallow.py --retrain --only cpu__ET500_log2   # ~2 min, winner only
+python3 scripts/02_train_shallow.py --retrain                          # ~20 min, all 9 shallow
+python3 scripts/03_train_deep.py    --retrain                          # ~1.5 h, all 16 deep
+```
+
+**How exactly do these reproduce?**
+
+| | reproducibility |
+|---|---|
+| The 9 shallow configs (sklearn) | **Bit-identical**, anywhere. Verified: all 25 folds of `cpu__ET500_log2` reproduce the shipped `meta.json` values exactly. |
+| The 16 deep configs (Keras/TF) | **Bit-identical on the same machine and backend** — verified by re-running completed fits and matching to six decimals. Across *different* hardware or backends (Metal GPU vs CPU vs CUDA, different TF builds) expect small drift, since floating-point reduction order differs. Accuracies should land within ~1e-3; individual PUL predictions may flip near the decision boundary. |
+
+The shipped `probs_*.npz` are the authoritative record of what this release produced,
+so any paper number can be checked without retraining anything.
 
 ### C.1 — Leakage audit (5 s)
 
@@ -385,18 +416,21 @@ Reproduce the drift experiment: `python3 scripts/experiments/measure_t_drift.py 
 </details>
 
 <details>
-<summary><b>LFS file inventory</b></summary>
+<summary><b>Repository size / no Git LFS</b></summary>
 
-| Family | Count | Size each | What it is |
-|---|---:|---:|---|
-| `artifacts/predictions/*/r*_f*/classifier.{joblib,keras}` | 625 | 1–45 MB | per-trial classifier weights |
-| `artifacts/final_model.pkl` | 1 | ~180 MB | calibrated deployed model (v1) |
+This repository **does not use Git LFS**. Earlier releases tracked ~186 GB of FastText
+n-gram tables plus ~6.4 GB of per-trial classifier weights through LFS; both are gone.
+Every file now fits comfortably in regular git:
 
-The 100 FastText n-gram tables that used to dominate this list (~186 GB) are gone:
-the six embeddings now ship as ~38 MB of ordinary git files in `artifacts/embeddings/`.
-See §C.4 for why the 2.24 GB hash table was 99.45 % unreachable.
+| What | Size |
+|---|---:|
+| `artifacts/embeddings/` — six global embeddings | 38 MB |
+| `artifacts/final_model.pkl` (v1, xz-compressed) | 24 MB |
+| `artifacts/final_model_v2.pkl` (v2, xz-compressed) | 21 MB |
+| `data/unsupervised_corpus.txt.gz` — 359,763 PULs | 5.7 MB |
+| `artifacts/predictions/` — 625 × probability matrices + meta | ~90 MB |
 
-**Optional Drive mirror** (`.zip` snapshots, useful only if you can't use LFS): [link](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing).
+The bulk of what remains is the pre-rendered `unravel/` HTML views.
 
 </details>
 

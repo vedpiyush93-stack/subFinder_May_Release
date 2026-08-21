@@ -29,6 +29,15 @@
 artifacts/embeddings_cache/
 
 # ---------------------------------------------------------------------------
+# Per-trial classifier weights — NOT shipped (they were 6.4 GB across 625 fits).
+# Everything downstream reads probs_test.npz / probs_train.npz / meta.json,
+# which ARE tracked. Regenerate the weights with scripts/02 and scripts/03;
+# see README "Reproducing the per-trial weights".
+# ---------------------------------------------------------------------------
+artifacts/predictions/*/*/classifier.joblib
+artifacts/predictions/*/*/classifier.keras
+
+# ---------------------------------------------------------------------------
 # Python / build noise
 # ---------------------------------------------------------------------------
 __pycache__/

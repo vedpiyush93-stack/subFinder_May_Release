@@ -368,7 +368,10 @@ for d in DEMO_PULS:
         if clf_path.exists():
             _pipeline_cache[fold] = joblib.load(clf_path)
         else:
-            print(f"  WARN: no classifier.joblib at {clf_path.relative_to(ROOT)}")
+            print(f"  WARN: no classifier.joblib at {clf_path.relative_to(ROOT)}\n"
+                  f"        Per-trial weights are not shipped. Regenerate the winner's with:\n"
+                  f"          REPRO_REP_SEED=1000 python3 scripts/02_train_shallow.py \\\n"
+                  f"            --retrain --only cpu__ET500_log2   # ~2 min, bit-identical")
             _pipeline_cache[fold] = None
     pipeline = _pipeline_cache[fold]
     if pipeline is None:
