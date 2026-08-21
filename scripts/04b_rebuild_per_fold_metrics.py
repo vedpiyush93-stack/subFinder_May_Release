@@ -41,8 +41,20 @@ def main():
 
     y = pd.read_csv(ROOT/"data/Train_data.csv")["high_level_substr"].values
 
+    # Descriptive metadata for configurations added after the original CSV was
+    # written. Without this a new config gets empty family/role and downstream
+    # plots that colour by family fail with KeyError.
+    NEW_CONFIG_META = {
+        "cpuV2__ET500_log2": dict(
+            config="ours_CountVec_v2_OvR_ET",
+            family="ours_shallow", role="shallow",
+            featurizer="CountVec_cpu_v2 (split ',' '|' '_'; TC->3-level family; CAZy family fallback)",
+            classifier="OvR(ExtraTrees n=500 log2 balanced bootstrap=False)",
+            description="Deployed model: CountVec with the v2 tokenizer x ExtraTrees."),
+    }
+
     # carry forward the descriptive columns keyed by shorthand
-    meta_cols = {}
+    meta_cols = dict(NEW_CONFIG_META)
     prev = Path(args.out)
     if prev.exists():
         for r in csv.DictReader(open(prev)):

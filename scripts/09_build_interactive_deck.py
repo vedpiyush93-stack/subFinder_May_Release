@@ -76,7 +76,7 @@ for _, row in lit.iterrows():
 CANON = {s: set(CANON_PROV[s].keys()) for s in substrates}
 
 def family_of(short):
-    if short in ("cpu__ET500_log2","ftCbow_MM__ET500_sqrt"): return "Ours (shallow)"
+    if short in ("cpuV2__ET500_log2","cpu__ET500_log2","ftCbow_MM__ET500_sqrt"): return "Ours (shallow)"
     if "BRF100" in short: return "Paper BRF baselines"
     if "__LSTM" in short and "attn" not in short: return "DL: LSTM"
     if "__LSTMattn" in short: return "DL: LSTM+attn"
@@ -87,6 +87,7 @@ df_pf["family"] = df_pf.shorthand.apply(family_of)
 
 # === decoder for shorthand → (featurizer family, featurizer detail, classifier family, classifier detail)
 FEATURIZER_MAP = {
+    "cpuV2":     ("CountVec",  "tok_cpu_v2 (, | _; TC to 3-level family; CAZy family fallback)"),
     "cpu":       ("CountVec",  "tok_cpu (splits on , | _)"),
     "cv":        ("CountVec",  "paper's tok_comma_pipe (, |)"),
     "ftCbow":    ("FastText",  "CBOW · mean-pooled"),
@@ -115,6 +116,7 @@ df_pf["featurizer_family"] = df_pf.shorthand.apply(lambda s: decode_shorthand(s)
 df_pf["classifier_family"] = df_pf.shorthand.apply(lambda s: decode_shorthand(s)[2])
 
 PRETTY_FEATURIZER = {
+    "cpuV2":     "CountVec (v2: , | _, TC->3-level, CAZy family)",
     "cpu":       "CountVec (split , | _)",
     "cv":        "CountVec (paper, split , |)",
     "ftCbow":    "FastText CBOW",

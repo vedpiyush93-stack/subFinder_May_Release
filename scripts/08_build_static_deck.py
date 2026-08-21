@@ -116,7 +116,7 @@ for s in substrates:
 
 # Family tagging for plots
 def family_of(short):
-    if short in ("cpu__ET500_log2","ftCbow_MM__ET500_sqrt"): return "Ours (shallow)"
+    if short in ("cpuV2__ET500_log2","cpu__ET500_log2","ftCbow_MM__ET500_sqrt"): return "Ours (shallow)"
     if "BRF100" in short: return "Paper BRF baselines"
     if "__LSTM" in short and "attn" not in short: return "DL: LSTM"
     if "__LSTMattn" in short: return "DL: LSTM+attn"
@@ -127,6 +127,7 @@ df_pf["family"] = df_pf.shorthand.apply(family_of)
 
 # Decoder: shorthand → (featurizer_family, featurizer_detail, classifier_family, classifier_detail)
 FEATURIZER_MAP = {
+    "cpuV2":     ("CountVec",  "tok_cpu_v2 (, | _; TC to 3-level family; CAZy family fallback)"),
     "cpu":       ("CountVec",  "tok_cpu (splits on , | _)"),
     "cv":        ("CountVec",  "paper's tok_comma_pipe (, |)"),
     "ftCbow":    ("FastText",  "CBOW · mean-pooled"),
@@ -154,6 +155,7 @@ def decode_shorthand(sh):
 
 # Intuitive human-readable names. Used everywhere the shorthand would appear on a chart label.
 PRETTY_FEATURIZER = {
+    "cpuV2":     "CountVec (v2: , | _, TC->3-level, CAZy family)",
     "cpu":       "CountVec (split , | _)",
     "cv":        "CountVec (paper, split , |)",
     "ftCbow":    "FastText CBOW",

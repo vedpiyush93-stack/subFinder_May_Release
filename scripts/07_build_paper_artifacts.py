@@ -75,10 +75,15 @@ def main():
         b = lb[lb.shorthand == "cv__BRF100"].iloc[0]
         A("paper_baseline_acc", f"{b.mean_acc:.4f}")
         A("gap_ours_vs_paper_baseline", f"{top.mean_acc - b.mean_acc:.4f}")
-    if (lb.shorthand == "ftSg__LSTMattn").any():
-        d = lb[lb.shorthand == "ftSg__LSTMattn"].iloc[0]
-        A("best_paper_dl_acc", f"{d.mean_acc:.4f}")
-        A("gap_ours_vs_best_paper_dl", f"{top.mean_acc - d.mean_acc:.4f}")
+    # Best deep configuration, computed rather than assumed. This used to be
+    # hardcoded to ftSg__LSTMattn, which stopped being the best one when the
+    # benchmark was re-run: the audit then reported a stale comparison.
+    dl_mask = lb.shorthand.str.contains("__LSTM|__Trans|__JustAttn", regex=True)
+    if dl_mask.any():
+        d = lb[dl_mask].iloc[0]
+        A("best_dl_config", d.shorthand)
+        A("best_dl_acc", f"{d.mean_acc:.4f}")
+        A("gap_ours_vs_best_dl", f"{top.mean_acc - d.mean_acc:.4f}")
 
     # 2. Per-substrate P/R/F1 on seed-42 OOF of top model
     print("[07] Per-substrate metrics ...")
