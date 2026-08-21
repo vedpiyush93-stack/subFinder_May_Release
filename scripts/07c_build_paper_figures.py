@@ -92,7 +92,7 @@ def main():
     # ============================================================ FIG 1
     d = pfm.copy(); d["fam"] = d.shorthand.apply(family_of)
     order = d.groupby("fam").acc.mean().sort_values(ascending=False).index.tolist()
-    fig, ax = plt.subplots(figsize=(9.0, 4.4))
+    fig, ax = plt.subplots(figsize=(8.8, 4.0))
     for i, fam in enumerate(order):
         v = d[d.fam == fam].acc.values
         ax.boxplot(v, positions=[i], widths=0.55, patch_artist=True, showfliers=False,
@@ -137,7 +137,7 @@ def main():
     # ============================================================ FIG 2
     cm = confusion_matrix(y, y_pred, labels=subs).astype(float)
     cmn = cm / cm.sum(1, keepdims=True)
-    fig, ax = plt.subplots(figsize=(8.2, 6.8))
+    fig, ax = plt.subplots(figsize=(7.6, 6.2))
     im = ax.imshow(cmn, cmap="Blues", vmin=0, vmax=1)
     for i in range(len(subs)):
         for j in range(len(subs)):
@@ -180,12 +180,19 @@ def main():
     abl["top3"] = abl["top3"].fillna("").astype(str)
     CAZY = ("GH", "PL", "CE", "CBM", "GT", "AA")
 
+    # "null" marks a gene the annotation pipeline could not label. It is a real
+    # feature to the model -- an unannotated neighbour is weak evidence in itself --
+    # but it names nothing, so it is excluded from a podium meant to be read
+    # biologically. Bare digits are subfamily fragments left by splitting on "_"
+    # and are likewise uninformative on their own.
+    SKIP = {"null", ""}
     rows = []
     for s in subs:
         cnt = {}
         for t3 in abl[abl.true == s].top3:
             for tok in t3.split(";"):
-                if tok: cnt[tok] = cnt.get(tok, 0) + 1
+                if tok in SKIP or tok.isdigit(): continue
+                cnt[tok] = cnt.get(tok, 0) + 1
         for rank, (tok, n) in enumerate(sorted(cnt.items(), key=lambda kv: -kv[1])[:3], 1):
             if tok in canon[s]:                     status = "listed"
             elif tok.startswith(CAZY):              status = "cazy-not-listed"
@@ -194,7 +201,7 @@ def main():
     sg = pd.DataFrame(rows); sg.to_csv(TAB/"table_top3_siggenes.csv", index=False)
 
     FILL = {"listed": "#d6ebe9", "cazy-not-listed": "#f7e2e2", "non-cazy": "#f0f2f4"}
-    fig, ax = plt.subplots(figsize=(9.0, 6.1)); ax.axis("off")
+    fig, ax = plt.subplots(figsize=(8.6, 3.55)); ax.axis("off")
     cell, colr = [], []
     for s in subs:
         blk = sg[sg.substrate == s]
@@ -207,8 +214,8 @@ def main():
                 row.append(""); rowc.append("white")
         cell.append(row); colr.append(rowc)
     tb = ax.table(cellText=cell, colLabels=["Substrate", "1st", "2nd", "3rd"],
-                  loc="upper left", cellLoc="left", colWidths=[0.34, 0.22, 0.22, 0.22])
-    tb.auto_set_font_size(False); tb.set_fontsize(11.5); tb.scale(1, 1.62)
+                  loc="upper left", cellLoc="left", colWidths=[0.30, 0.235, 0.235, 0.235])
+    tb.auto_set_font_size(False); tb.set_fontsize(10.5); tb.scale(1, 1.30)
     for (i, j), c in tb.get_celld().items():
         c.set_edgecolor("white"); c.set_linewidth(1.4)
         if i == 0:
@@ -217,11 +224,13 @@ def main():
             c.set_facecolor(colr[i-1][j])
             c.set_text_props(color=INK, weight="bold" if j == 0 else "normal")
     titled(ax, "The three genes the model leans on most, per substrate",
-           "colour shows whether the curated enzyme table lists that family for that substrate")
+           "colour shows whether the curated enzyme table lists that family for that substrate",
+           tfs=13, sfs=10.5)
     ax.legend(handles=[Patch(facecolor=FILL["listed"], label="listed for this substrate"),
                        Patch(facecolor=FILL["cazy-not-listed"], label="a CAZy family, but not listed here"),
                        Patch(facecolor=FILL["non-cazy"], label="not a CAZy family: transporter, regulator, or unannotated")],
-              loc="upper left", bbox_to_anchor=(0, -0.02), ncol=1, handlelength=1.6)
+              loc="upper left", bbox_to_anchor=(-0.005, -0.015), ncol=3,
+              handlelength=1.3, columnspacing=1.4, fontsize=9.5)
     plt.savefig(FIG/"fig3_siggenes.png"); plt.close()
 
     # ============================================================ FIG 4 (two-panel, eligible-scoped)
@@ -245,7 +254,7 @@ def main():
     macro("SigScope", TS); macro("SigFlag", TF); macro("SigScopeRate", f"{TF/TS*100:.1f}")
     macro("SigSkipped", len(X)-TE)
 
-    fig, (aL, aR) = plt.subplots(1, 2, figsize=(11.4, 5.4))
+    fig, (aL, aR) = plt.subplots(1, 2, figsize=(11.0, 4.9))
     yy = np.arange(len(fu))
     aL.barh(yy, fu.eligible, height=.66, color="#e4eaef", label="loci containing a listed family")
     aL.barh(yy, fu.hit, height=.66, color=TEAL, label="…the model used one in its top 3")
@@ -301,7 +310,7 @@ def main():
     take((C.true == C.pred) & C.conf.between(.60, .88), "A routine call")
     while len(picks) < 6: take(pd.Series(True, index=C.index), "Further example")
 
-    fig, axes = plt.subplots(2, 3, figsize=(12.4, 6.6))
+    fig, axes = plt.subplots(2, 3, figsize=(12.0, 6.0))
     fig.subplots_adjust(hspace=1.05, wspace=0.14, top=0.82)
     for ax, (q, label) in zip(axes.ravel(), picks):
         o = np.argsort(-Pc[q.idx])[:3]
@@ -403,13 +412,165 @@ def main():
     macro("EceIso", f"{iso.ece_10bin:.3f}"); macro("IsoAcc", f"{iso.accuracy:.4f}")
     macro("MeanT", f"{float(t['T']):.2f}")
 
+    # ======================================================== SUPPLEMENTARY
+    from sklearn.feature_extraction.text import CountVectorizer
+
+    # S1 reliability diagram --------------------------------------------------
+    conf_raw = P.max(1); conf_cal = Pc.max(1); correct = (y_pred == y)
+    # direction and size of the miscalibration, weighted by band population
+    gap, ntot = 0.0, 0
+    for lo in np.arange(0, 1, 0.1):
+        m = (conf_raw >= lo) & (conf_raw < lo + 0.1)
+        if m.sum() >= 5:
+            gap += (correct[m].mean() - conf_raw[m].mean()) * m.sum(); ntot += int(m.sum())
+    macro("ConfGap", f"{gap/ntot:+.2f}".replace("+", ""))
+    macro("ConfDir", "under" if gap > 0 else "over")
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(10.2, 4.0))
+    for ax, cf, name in ((a1, conf_raw, "Uncalibrated"), (a2, conf_cal, "Temperature scaled")):
+        edges = np.linspace(0, 1, 11); xs, ys, ns = [], [], []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            m = (cf >= lo) & (cf < hi if hi < 1 else cf <= hi)
+            if m.sum() >= 5:
+                xs.append(cf[m].mean()); ys.append(correct[m].mean()); ns.append(int(m.sum()))
+        ax.plot([0, 1], [0, 1], ls=(0, (4, 3)), color=SLATE, lw=1.2, label="perfect calibration")
+        ax.plot(xs, ys, "-o", color=TEAL, lw=2.2, ms=7, label="observed")
+        for x_, y_, n_ in zip(xs, ys, ns):
+            ax.annotate(f"n={n_}", (x_, y_), textcoords="offset points", xytext=(0, -14),
+                        fontsize=8, color=MUTED, ha="center")
+        ax.set_xlim(0, 1.02); ax.set_ylim(0, 1.02)
+        ax.set_xlabel("Stated confidence"); ax.set_ylabel("Observed accuracy")
+        ax.grid(True, color=RULE, lw=0.6); ax.set_axisbelow(True)
+        titled(ax, name, tfs=12.5)
+        ax.legend(loc="upper left")
+    plt.tight_layout(); plt.savefig(FIG/"figS1_reliability.png"); plt.close()
+
+    # S2 top-K cumulative accuracy -------------------------------------------
+    ordr = np.argsort(-Pc, axis=1)
+    topk = [float(np.mean([y[i] in [cls[j] for j in ordr[i][:k]] for i in range(len(y))]))
+            for k in (1, 2, 3, 5)]
+    per_sub_k = {s: [float(np.mean([y[i] in [cls[j] for j in ordr[i][:k]]
+                                    for i in range(len(y)) if y[i] == s])) for k in (1, 2, 3, 5)]
+                 for s in subs}
+    macro("TopOne", f"{topk[0]:.3f}"); macro("TopTwo", f"{topk[1]:.3f}")
+    macro("TopThree", f"{topk[2]:.3f}")
+    fig, ax = plt.subplots(figsize=(8.6, 3.9))
+    ks = [1, 2, 3, 5]
+    for s in subs:
+        ax.plot(ks, per_sub_k[s], "-o", color=SLATE, alpha=.35, lw=1.2, ms=4)
+    ax.plot(ks, topk, "-o", color=TEAL, lw=3, ms=9, label="all substrates")
+    for k, v in zip(ks, topk):
+        ax.annotate(f"{v:.3f}", (k, v), textcoords="offset points", xytext=(0, 11),
+                    fontsize=11, fontweight="bold", color=INK, ha="center")
+    ax.set_xticks(ks); ax.set_xlabel("K (substrates considered)"); ax.set_ylabel("Cumulative accuracy")
+    ax.set_ylim(min(min(v) for v in per_sub_k.values())-0.04, 1.02)
+    ax.grid(True, axis="y", color=RULE, lw=0.6); ax.set_axisbelow(True)
+    titled(ax, "How often the truth is within the top K",
+           "grey lines are individual substrates; reporting more than the winner recovers most misses")
+    ax.legend(loc="lower right")
+    plt.tight_layout(); plt.savefig(FIG/"figS2_topk.png"); plt.close()
+
+    # S3 confidence vs correctness -------------------------------------------
+    bins = [(0, .235), (.235, .5), (.5, .75), (.75, .9), (.9, 1.01)]
+    lab = ["below\nsignificance", "0.24-0.50", "0.50-0.75", "0.75-0.90", "0.90-1.00"]
+    accs, cnts = [], []
+    for lo, hi in bins:
+        m = (conf_cal >= lo) & (conf_cal < hi)
+        accs.append(float(correct[m].mean()) if m.sum() else 0.0); cnts.append(int(m.sum()))
+    fig, ax = plt.subplots(figsize=(8.6, 3.7))
+    bars = ax.bar(range(len(bins)), accs, color=[ROSE] + [TEAL]*4, width=.62)
+    for i, (a_, n_) in enumerate(zip(accs, cnts)):
+        ax.annotate(f"{a_*100:.0f}%", (i, a_), textcoords="offset points", xytext=(0, 6),
+                    ha="center", fontsize=12, fontweight="bold", color=INK)
+        ax.annotate(f"{n_} loci", (i, 0.02), ha="center", fontsize=10, color="white")
+    ax.set_xticks(range(len(bins))); ax.set_xticklabels(lab, fontsize=10)
+    ax.set_ylabel("Fraction correct"); ax.set_ylim(0, 1.12)
+    ax.grid(True, axis="y", color=RULE, lw=0.6); ax.set_axisbelow(True)
+    titled(ax, "Confidence tracks correctness",
+           "loci grouped by the winning calibrated probability; red is the band the $p$-value rejects")
+    plt.tight_layout(); plt.savefig(FIG/"figS3_confidence.png"); plt.close()
+    macro("HighConfAcc", f"{accs[-1]*100:.1f}"); macro("HighConfN", cnts[-1])
+    macro("BelowSigN", cnts[0]); macro("BelowSigAcc", f"{accs[0]*100:.0f}")
+
+    # S4 out-of-vocabulary proportion vs correctness ---------------------------
+    oovs = np.zeros(len(X))
+    for fold, (tr, te) in enumerate(skf.split(X, y)):
+        cv = CountVectorizer(tokenizer=tok_cpu_v2, token_pattern=None, lowercase=False)
+        cv.fit(X[tr]); V = set(cv.vocabulary_)
+        for i in te:
+            tk = tok_cpu_v2(X[i])
+            oovs[i] = sum(1 for t in tk if t not in V)/max(len(tk), 1)
+    ob = [(0, .001), (.001, .05), (.05, .15), (.15, 1.01)]
+    olab = ["0%", "0-5%", "5-15%", ">15%"]
+    oacc = [float(correct[(oovs >= lo) & (oovs < hi)].mean()) if ((oovs >= lo) & (oovs < hi)).sum() else 0
+            for lo, hi in ob]
+    on = [int(((oovs >= lo) & (oovs < hi)).sum()) for lo, hi in ob]
+    fig, ax = plt.subplots(figsize=(8.6, 3.5))
+    ax.bar(range(len(ob)), oacc, color=TEAL, width=.6)
+    for i, (a_, n_) in enumerate(zip(oacc, on)):
+        ax.annotate(f"{a_*100:.0f}%", (i, a_), textcoords="offset points", xytext=(0, 6),
+                    ha="center", fontsize=12, fontweight="bold", color=INK)
+        ax.annotate(f"{n_} loci", (i, 0.02), ha="center", fontsize=10, color="white")
+    ax.set_xticks(range(len(ob))); ax.set_xticklabels(olab)
+    ax.set_ylabel("Fraction correct"); ax.set_ylim(0, 1.12)
+    ax.set_xlabel("Share of the locus's tokens unseen in training")
+    ax.grid(True, axis="y", color=RULE, lw=0.6); ax.set_axisbelow(True)
+    titled(ax, "Accuracy against unfamiliar vocabulary",
+           "loci whose genes the training fold never saw are predicted less reliably")
+    plt.tight_layout(); plt.savefig(FIG/"figS4_oov.png"); plt.close()
+    macro("ZeroOovN", on[0]); macro("ZeroOovAcc", f"{oacc[0]*100:.0f}")
+
+    # S5 training cost --------------------------------------------------------
+    tt = pfm.copy(); tt["fam"] = tt.shorthand.apply(family_of)
+    agg = tt.groupby("fam").wall_sec.mean().sort_values()
+    fig, ax = plt.subplots(figsize=(8.6, 3.2))
+    ax.barh(range(len(agg)), agg.values, color=SLATE, height=.6)
+    for i, v in enumerate(agg.values):
+        ax.annotate(f"{v:.0f} s", (v, i), textcoords="offset points", xytext=(6, 0),
+                    va="center", fontsize=11, fontweight="bold", color=INK)
+    ax.set_yticks(range(len(agg))); ax.set_yticklabels(agg.index, fontsize=10.5)
+    ax.set_xlabel("Mean seconds per training run"); ax.set_xlim(0, agg.values.max()*1.18)
+    ax.grid(True, axis="x", color=RULE, lw=0.6); ax.set_axisbelow(True)
+    titled(ax, "What each family costs to train", "mean wall-clock seconds for one train/test run")
+    plt.tight_layout(); plt.savefig(FIG/"figS5_cost.png"); plt.close()
+    macro("CostCounts", f"{agg[[i for i in agg.index if i.startswith('Counts')][0]]:.0f}")
+
+    # supplementary tables ----------------------------------------------------
+    full = lb.copy()
+    fb = ""
+    for i, q in full.iterrows():
+        f_key, c_key = q.shorthand.split("__")
+        fname, rep = FEAT.get(f_key, (f_key.replace("_", r"\_"), ""))
+        cname = CLF.get(c_key, c_key)
+        fb += (f"{i+1} & {fname} $+$ {cname} & {rep} & "
+               f"${q.mean_acc:.4f}\\pm{q.std_acc:.4f}$ & {q.min_acc:.4f} & {q.max_acc:.4f} \\\\\n")
+    (GEN/"table_full_leaderboard.tex").write_text(
+        "\\begin{tabular}{rllrrr}\n\\toprule\nRank & Configuration & Representation & "
+        "Accuracy & Min & Max \\\\\n\\midrule\n" + fb + "\\bottomrule\n\\end{tabular}\n")
+
+    kb = "".join(f"{s} & {per_sub_k[s][0]:.3f} & {per_sub_k[s][1]:.3f} & "
+                 f"{per_sub_k[s][2]:.3f} & {per_sub_k[s][3]:.3f} \\\\\n" for s in subs)
+    kb += ("\\midrule\n\\textbf{all} & " +
+           " & ".join(f"\\textbf{{{v:.3f}}}" for v in topk) + " \\\\\n")
+    (GEN/"table_topk.tex").write_text(
+        "\\begin{tabular}{lrrrr}\n\\toprule\nSubstrate & K=1 & K=2 & K=3 & K=5 \\\\\n"
+        "\\midrule\n" + kb + "\\bottomrule\n\\end{tabular}\n")
+
+    sb = "".join(f"{q.substrate} & {int(q.eligible)} & {int(q.hit)} & {q.rate*100:.0f}\\% & "
+                 f"{int(q.in_scope)} & {int(q.flagged)} & {q.srate*100:.0f}\\% \\\\\n"
+                 for _, q in fu.sort_values("substrate").iterrows())
+    (GEN/"table_funnel.tex").write_text(
+        "\\begin{tabular}{lrrrrrr}\n\\toprule\n & \\multicolumn{3}{c}{By locus} & "
+        "\\multicolumn{3}{c}{By enzyme family} \\\\\n\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}\n"
+        "Substrate & Eligible & Hit & Rate & In scope & Surfaced & Rate \\\\\n\\midrule\n"
+        + sb + "\\bottomrule\n\\end{tabular}\n")
+
     (GEN/"numbers.tex").write_text(
         "% Generated by scripts/07c_build_paper_figures.py. Do not edit.\n" +
         "".join(f"\\newcommand{{\\{k}}}{{{v}}}\n" for k, v in sorted(MACROS.items())))
 
     print(f"[07c] held-out accuracy {acc:.4f}")
     print(f"[07c] signature genes {TH}/{TE} = {TH/TE*100:.1f}%  ({len(X)-TE} loci not answerable)")
-    print(f"[07c] wrote 5 figures, 4 tables, and {len(MACROS)} macros to paper/generated/")
+    print(f"[07c] wrote 10 figures and {len(MACROS)} macros to paper/generated/")
 
 
 if __name__ == "__main__":

@@ -17,17 +17,23 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-PDF = ROOT/"paper/main.pdf"
-if not PDF.exists():
-    sys.exit("paper/main.pdf not built yet")
+# Both documents are checked together: some values (calibration detail, top-K,
+# vocabulary behaviour) live in the supplement by design, and a value present in
+# either is a value the reader can find.
+PDFS = [ROOT/"paper/main.pdf", ROOT/"paper/supplement.pdf"]
+missing = [q for q in PDFS if not q.exists()]
+if missing:
+    sys.exit(f"not built yet: {', '.join(str(q.name) for q in missing)}")
 
 try:
     import fitz
 except ImportError:
     sys.exit("pymupdf required: pip install pymupdf")
 
-doc = fitz.open(PDF)
-TEXT = "".join(doc[i].get_text() for i in range(doc.page_count))
+TEXT = ""
+for q in PDFS:
+    doc = fitz.open(q)
+    TEXT += "".join(doc[i].get_text() for i in range(doc.page_count))
 TEXT = TEXT.replace("−", "-").replace(" ", "").replace("\xa0", " ")
 
 audit = dict(l.split("\t", 1) for l in (ROOT/"paper/audit_output.txt").read_text().splitlines()
@@ -74,13 +80,19 @@ for _, r in cal.iterrows():
 w = per.iloc[-1]
 check("weakest substrate F1",    f"{w.f1:.2f}")
 check("weakest substrate recall", f"{w.recall:.2f}")
+topk = pd.read_csv(ROOT/"paper/tables/table_per_substrate.csv")  # presence check only
+gen = (ROOT/"paper/generated/numbers.tex").read_text()
+import re as _re
+M = dict(_re.findall(r"\\newcommand\{\\(\w+)\}\{([^}]*)\}", gen))
+for k in ("TopOne", "TopTwo", "TopThree", "HighConfAcc", "ZeroOovAcc", "ConfGap"):
+    check(f"macro {k}", M[k])
 
-print(f"{'check':30s} {'value in artifacts':22s} in PDF?")
+print(f"{'check':30s} {'value in artifacts':22s} in either PDF?")
 print("-" * 66)
 for label, needle, ok in checks:
     print(f"  {label:28s} {needle:22s} {'yes' if ok else 'NOT FOUND'}")
 print("-" * 66)
 if fails:
-    print(f"{fails} of {len(checks)} values are missing from the rendered manuscript")
+    print(f"{fails} of {len(checks)} values are missing from the rendered documents")
     sys.exit(1)
-print(f"all {len(checks)} checked values appear in paper/main.pdf as rendered")
+print(f"all {len(checks)} checked values appear in the rendered main paper or supplement")
