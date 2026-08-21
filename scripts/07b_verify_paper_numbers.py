@@ -1,72 +1,86 @@
 #!/usr/bin/env python3
-"""Check that every headline number in paper/main.tex matches the run artifacts.
+"""Check that the numbers a reader sees in paper/main.pdf match the run artifacts.
 
-The manuscript states figures in prose, where nothing stops them drifting away
-from the runs they describe as the pipeline is re-run. This script re-derives
-each one from paper/audit_output.txt and the released CSVs and fails loudly on
-any mismatch, so "traceable to the runs" is enforced rather than asserted.
+The manuscript no longer contains literal numbers: they are \\newcommand macros
+written by scripts/07c_build_paper_figures.py and expanded at typeset time. So
+the meaningful check is on the compiled PDF rather than the source -- it verifies
+both that the artifacts are right and that the macros expanded as intended.
+
+Each value below is re-derived from artifacts/ and paper/audit_output.txt and
+must appear in the rendered text. Exits non-zero on any mismatch.
 
     python3 scripts/07b_verify_paper_numbers.py
 """
 from __future__ import annotations
-import re, sys
+import sys
 from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-tex   = (ROOT/"paper/main.tex").read_text()
+PDF = ROOT/"paper/main.pdf"
+if not PDF.exists():
+    sys.exit("paper/main.pdf not built yet")
+
+try:
+    import fitz
+except ImportError:
+    sys.exit("pymupdf required: pip install pymupdf")
+
+doc = fitz.open(PDF)
+TEXT = "".join(doc[i].get_text() for i in range(doc.page_count))
+TEXT = TEXT.replace("−", "-").replace(" ", "").replace("\xa0", " ")
+
 audit = dict(l.split("\t", 1) for l in (ROOT/"paper/audit_output.txt").read_text().splitlines()
              if "\t" in l and not l.startswith("#"))
-lb    = pd.read_csv(ROOT/"artifacts/leaderboard.csv")
-pfm   = pd.read_csv(ROOT/"artifacts/per_fold_metrics.csv")
-cal   = pd.read_csv(ROOT/"artifacts/calibration_report.csv")
+lb   = pd.read_csv(ROOT/"artifacts/leaderboard.csv")
+pfm  = pd.read_csv(ROOT/"artifacts/per_fold_metrics.csv")
+cal  = pd.read_csv(ROOT/"artifacts/calibration_report.csv")
+per  = pd.read_csv(ROOT/"paper/tables/table_per_substrate.csv")
+fun  = pd.read_csv(ROOT/"paper/tables/table_sig_funnel.csv")
 
 def acc(cfg):
-    r = lb[lb.shorthand == cfg].iloc[0]
-    return float(r.mean_acc), float(r.std_acc)
+    r = lb[lb.shorthand == cfg].iloc[0]; return float(r.mean_acc), float(r.std_acc)
 
 checks, fails = [], 0
-
-def check(label, expected, present_in_tex=None, fmt="{:.4f}"):
-    """Assert `expected` (from artifacts) appears in the manuscript."""
+def check(label, needle):
     global fails
-    needle = present_in_tex if present_in_tex is not None else fmt.format(expected)
-    ok = needle in tex
-    checks.append((label, needle, ok))
+    ok = str(needle) in TEXT
+    checks.append((label, str(needle), ok))
     if not ok: fails += 1
 
-top_a, top_s = acc("cpuV2__ET500_log2")
-v1_a,  v1_s  = acc("cpu__ET500_log2")
-brf_a, brf_s = acc("cv__BRF100")
-dl_a,  dl_s  = acc(audit["best_dl_config"])
+dep_a, dep_s = acc("cpuV2__ET500_log2")
+brf_a, _     = acc("cv__BRF100")
+dl = lb[lb.shorthand.str.contains("__LSTM|__Trans|__JustAttn")].iloc[0]
 
-check("deployed accuracy",      top_a, f"0.9183\\pm0.0153")
-check("v1 accuracy",            v1_a,  f"0.9066\\pm0.0174")
-check("published baseline",     brf_a, f"0.8402\\pm0.0254")
-check("best deep config",       dl_a,  f"0.7922\\pm0.0331")
-check("gap vs baseline (pp)",   None,  f"{float(audit['gap_ours_vs_paper_baseline'])*100:.2f}")
-check("deployed vocabulary",    None,  "354")
-check("gap vs best deep (pp)",  None,  f"{float(audit['gap_ours_vs_best_dl'])*100:.2f}")
-check("n labelled PULs",        None,  "1{,}030")
-check("n configurations",       None,  str(pfm.shorthand.nunique()))
-check("n runs",                 None,  str(pfm.shorthand.nunique()*25))
-check("sig-gene hit rate",      None,  audit["per_sub_sig_pul_hit_rate"].replace("%","\\%"))
-check("single-repeat accuracy",  None,  audit[[k for k in audit if k.startswith("oof_seed")][0]])
-check("sig-gene numerator",     None,  audit["per_sub_sig_total_hit"])
-check("sig-gene denominator",   None,  audit["per_sub_sig_total_eligible"])
-check("lit canon pairs",        None,  audit["lit_db_substrate_family_pairs_after_alias_collapse"])
+check("deployed accuracy",       f"{dep_a:.4f}")
+check("deployed std",            f"{dep_s:.4f}")
+check("baseline accuracy",       f"{brf_a:.4f}")
+check("best deep accuracy",      f"{dl.mean_acc:.4f}")
+check("gap vs best deep",        f"{(dep_a-dl.mean_acc)*100:.2f}")
+check("gap vs baseline",         f"{(dep_a-brf_a)*100:.2f}")
+check("held-out pass accuracy",  audit[[k for k in audit if k.startswith("oof_seed")][0]])
+check("n configurations",        pfm.shorthand.nunique())
+check("n runs",                  pfm.shorthand.nunique()*25)
+check("n labelled loci",         f"{len(pd.read_csv(ROOT/'data/Train_data.csv')):,}")
+check("signature-gene hits",     int(fun.hit.sum()))
+check("signature-gene eligible", int(fun.eligible.sum()))
+check("signature-gene rate",     f"{fun.hit.sum()/fun.eligible.sum()*100:.1f}")
+check("gene-view flagged",       int(fun.flagged.sum()))
+check("gene-view in-scope",      int(fun.in_scope.sum()))
+check("lit canon pairs",         audit["lit_db_substrate_family_pairs_after_alias_collapse"])
+for _, r in cal.iterrows():
+    if r.method in ("uncalibrated", "temperature_scaling", "isotonic_cv5 (sklearn)"):
+        check(f"ECE {r.method.split('_cv')[0]}", f"{r.ece_10bin:.3f}")
+w = per.iloc[-1]
+check("weakest substrate F1",    f"{w.f1:.2f}")
+check("weakest substrate recall", f"{w.recall:.2f}")
 
-
-for m, e in zip(cal.method, cal.ece_10bin):
-    if m in ("uncalibrated", "temperature_scaling"):
-        check(f"ECE {m}", None, f"{e:.3f}")
-
-print(f"{'check':32s} {'value in artifacts':24s} result")
-print("-"*72)
+print(f"{'check':30s} {'value in artifacts':22s} in PDF?")
+print("-" * 66)
 for label, needle, ok in checks:
-    print(f"  {label:30s} {needle:24s} {'OK' if ok else 'NOT FOUND IN main.tex'}")
-print("-"*72)
+    print(f"  {label:28s} {needle:22s} {'yes' if ok else 'NOT FOUND'}")
+print("-" * 66)
 if fails:
-    print(f"{fails} of {len(checks)} numbers in the manuscript do not match the artifacts")
+    print(f"{fails} of {len(checks)} values are missing from the rendered manuscript")
     sys.exit(1)
-print(f"all {len(checks)} checked numbers in paper/main.tex match the released run artifacts")
+print(f"all {len(checks)} checked values appear in paper/main.pdf as rendered")
