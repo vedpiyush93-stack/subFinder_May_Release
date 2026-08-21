@@ -18,13 +18,14 @@ Usage:
     python scripts/07_build_paper_artifacts.py
 """
 from __future__ import annotations
+import re
 import argparse, sys, time
 from pathlib import Path
 import numpy as np, pandas as pd, pickle
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from src.preprocessing.tokenizers import tok_cpu, is_cazy
+from src.preprocessing.tokenizers import tok_cpu, tok_cpu_v2, is_cazy
 from src.lit_validation import build_canon, SUBSTRATE_ALIAS
 from src.calibration.temperature import apply_temperature
 from src.ablation.leave_one_token_out import batched_ablation
@@ -33,7 +34,11 @@ from sklearn.model_selection import StratifiedKFold
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--top-config", default="cpu__ET500_log2")
+    ap.add_argument("--top-config", default=None,
+                    help="Configuration to report on. Default: whichever config tops the "
+                         "leaderboard, so the headline and every section below it describe "
+                         "the same model (this used to be hardcoded to cpu__ET500_log2, "
+                         "which silently mixed v1 sections under a v2 headline).")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--K", type=int, default=3, help="Top-K for sig-gene metrics.")
     args = ap.parse_args()
@@ -59,6 +64,9 @@ def main():
             .sort_values("mean_acc", ascending=False).reset_index(drop=True)
     lb.to_csv(ROOT/"docs/tables/leaderboard.csv", index=False)
     top = lb.iloc[0]
+    top_config = args.top_config or str(top.shorthand)
+    if top_config != str(top.shorthand):
+        print(f"  NOTE: reporting on {top_config}, which is NOT the leaderboard winner ({top.shorthand})")
     A("top1_config", top.shorthand)
     A("top1_acc", f"{top.mean_acc:.4f}")
     A("top1_acc_std", f"{top.std_acc:.4f}")
@@ -78,7 +86,7 @@ def main():
     y_pred = np.array([None]*len(X), dtype=object)
     P_oof = np.zeros((len(X), 12), dtype=np.float32)
     for fold, (_, te) in enumerate(skf.split(X, y)):
-        npz = np.load(ROOT/"artifacts/predictions"/args.top_config/f"r{args.seed}_f{fold}"/"probs_test.npz",
+        npz = np.load(ROOT/"artifacts/predictions"/top_config/f"r{args.seed}_f{fold}"/"probs_test.npz",
                       allow_pickle=True)
         fc = list(npz["classes"]); col_idx = np.array([fc.index(c) for c in cls])
         P_oof[te] = npz["probs"][:, col_idx]
@@ -107,9 +115,23 @@ def main():
 
     # 4. Per-substrate sig-gene FUNNEL on calibrated TRUE-class ablation
     print("[07] Per-substrate sig-gene funnel (calibrated TRUE-class) ...")
-    abl_csv = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_groundtruth_calibrated.csv"
-    if not abl_csv.exists():
-        abl_csv = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_groundtruth.csv"
+    # Prefer the v2 ablation when the deployed configuration is the v2 one, and
+    # match it with the v2 tokenizer + family-augmented canon so this funnel and
+    # scripts/13c_v2_sig_gene_pr.py agree by construction rather than by luck.
+    abl_v2 = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv"
+    use_v2 = top_config.startswith("cpuV2") and abl_v2.exists()
+    if use_v2:
+        abl_csv = abl_v2
+        tok_fn = tok_cpu_v2
+        canon = {sub: (fams | {re.match(r"^(GH|PL|CE|CBM|GT|AA)", f).group(1)
+                               for f in fams if re.match(r"^(GH|PL|CE|CBM|GT|AA)[0-9]", f)})
+                 for sub, fams in canon.items()}
+        print("  using the v2 ablation with tok_cpu_v2 + family-augmented canon")
+    else:
+        tok_fn = tok_cpu
+        abl_csv = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_groundtruth_calibrated.csv"
+        if not abl_csv.exists():
+            abl_csv = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_groundtruth.csv"
     if not abl_csv.exists():
         print("  (no precomputed ablation CSV found; skipping funnel)")
         funnel = pd.DataFrame()
@@ -121,12 +143,12 @@ def main():
         for s in cls:
             test_of_s = oof[oof.true == s]
             n_total = len(test_of_s)
-            n_elig = sum(1 for _, r in test_of_s.iterrows() if set(tok_cpu(X[r.idx])) & canon[s])
+            n_elig = sum(1 for _, r in test_of_s.iterrows() if set(tok_fn(X[r.idx])) & canon[s])
             n_hit  = sum(1 for _, r in test_of_s.iterrows()
-                          if (set(tok_cpu(X[r.idx])) & canon[s]) and (set(str(r[f"top{K}"]).split(";")) & canon[s]))
+                          if (set(tok_fn(X[r.idx])) & canon[s]) and (set(str(r[f"top{K}"]).split(";")) & canon[s]))
             scope = set(); flagged = set()
             for _, r in test_of_s.iterrows():
-                scope   |= set(tok_cpu(X[r.idx])) & canon[s]
+                scope   |= set(tok_fn(X[r.idx])) & canon[s]
                 flagged |= set(str(r[f"top{K}"]).split(";")) & canon[s]
             in_scope = len(scope); n_flag = len(scope & flagged); lit_n = len(canon[s])
             rows.append(dict(substrate=s, n_total=n_total, n_eligible=n_elig, n_hit_at_K=n_hit,

@@ -28,7 +28,7 @@ Usage:
     python3 scripts/13_train_tc2_refinement.py
 """
 from __future__ import annotations
-import sys, time, joblib
+import os, sys, time, joblib
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -52,7 +52,17 @@ from sklearn.pipeline import Pipeline
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 
-def make_pipe(seed=42):
+def make_pipe(seed=None):
+    """Build the deployed pipeline: CountVectorizer(tok_cpu_v2) -> OvR(ExtraTrees-500).
+
+    ``seed`` defaults to REPRO_REP_SEED, the same model-init seed every other
+    configuration in the benchmark uses, so the accuracy reported here matches
+    artifacts/leaderboard.csv exactly. It previously varied per fold
+    (``seed*7+fold``), which made this script disagree with the leaderboard
+    (0.9150 here vs 0.9163 there) for no reason other than model init.
+    """
+    if seed is None:
+        seed = int(os.environ.get("REPRO_REP_SEED", "42"))
     return Pipeline([
         ("cv", CountVectorizer(tokenizer=tok_cpu_v2, lowercase=False, token_pattern=None)),
         ("vr", OneVsRestClassifier(ExtraTreesClassifier(
@@ -66,7 +76,7 @@ print("\n[tc2] running 5x5 RSKF benchmark with tok_cpu_tc2 ...")
 t0 = time.time()
 fold_accs, T_list = [], []
 for seed, fold, tr_outer, te, _, _ in rskf_splits(y):
-    pipe = make_pipe(seed=seed*7+fold)
+    pipe = make_pipe()
     pipe.fit(X[tr_outer], y[tr_outer])
     pred = pipe.predict(X[te])
     fold_accs.append(float((pred == y[te]).mean()))

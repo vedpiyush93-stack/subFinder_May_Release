@@ -58,7 +58,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from src.calibration import fit_temperature, fit_temperature_inner_cv, apply_temperature
 from src.preprocessing import CountVecFeaturizer
-from src.preprocessing.tokenizers import tok_cpu
+from src.preprocessing.tokenizers import tok_cpu, tok_cpu_v2, tok_comma_pipe
 from src.shallow import build_shallow
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -74,11 +74,30 @@ def _ece(probs, y_int, n_bins=10):
     return float((n * np.abs(accs - confs)).sum() / n.sum())
 
 
-def _make_top_pipe():
-    """Fresh cpu__ET500_log2 pipeline (CountVec_cpu × OvR(ExtraTrees 500, log2))."""
+# Which tokenizer each CountVec config is built on. --top-config used to be
+# accepted and then ignored: the pipeline below always used tok_cpu, so
+# calibrating any other configuration silently fitted a v1 model against that
+# configuration's saved probabilities.
+_CONFIG_TOKENIZER = {
+    "cpu__ET500_log2":   tok_cpu,
+    "cpuV2__ET500_log2": tok_cpu_v2,
+    "cv__BRF100":        tok_comma_pipe,
+}
+_CONFIG_CLF = {
+    "cpu__ET500_log2":   "ET500_log2",
+    "cpuV2__ET500_log2": "ET500_log2",
+    "cv__BRF100":        "BRF100",
+}
+
+
+def _make_top_pipe(config: str = "cpu__ET500_log2"):
+    """Fresh pipeline for ``config`` — CountVectorizer(its tokenizer) -> its classifier."""
+    if config not in _CONFIG_TOKENIZER:
+        raise KeyError(f"{config!r} has no registered tokenizer; add it to _CONFIG_TOKENIZER")
     return Pipeline([
-        ("cv", CountVectorizer(tokenizer=tok_cpu, token_pattern=None, lowercase=False)),
-        ("vr", build_shallow("ET500_log2")),
+        ("cv", CountVectorizer(tokenizer=_CONFIG_TOKENIZER[config],
+                                token_pattern=None, lowercase=False)),
+        ("vr", build_shallow(_CONFIG_CLF[config])),
     ])
 
 
@@ -124,7 +143,7 @@ def main():
 
         # ── (A) Temperature scaling, inner-CV protocol (leak-free)
         t_t = time.time()
-        T, _oof = fit_temperature_inner_cv(_make_top_pipe, X[tr_outer], y[tr_outer],
+        T, _oof = fit_temperature_inner_cv(lambda: _make_top_pipe(args.top_config), X[tr_outer], y[tr_outer],
                                             n_inner_folds=args.n_inner, random_state=args.seed)
         # LEAK CHECK: confirm test indices were NEVER in the inner CV
         assert len(set(te) & set(tr_outer)) == 0, "outer test ∩ outer train must be empty"
@@ -134,13 +153,13 @@ def main():
 
         # ── (B) CalibratedClassifierCV(isotonic), cv=5
         # sklearn refits the base on inner-train folds; test fold (`te`) is not in tr_outer.
-        cal_iso = CalibratedClassifierCV(_make_top_pipe(), method="isotonic", cv=args.n_inner)
+        cal_iso = CalibratedClassifierCV(_make_top_pipe(args.top_config), method="isotonic", cv=args.n_inner)
         cal_iso.fit(X[tr_outer], y[tr_outer])
         col_iso = np.array([list(cal_iso.classes_).index(c) for c in cls])
         P_iso[te] = cal_iso.predict_proba(X[te])[:, col_iso]
 
         # ── (C) CalibratedClassifierCV(sigmoid), cv=5
-        cal_sig = CalibratedClassifierCV(_make_top_pipe(), method="sigmoid", cv=args.n_inner)
+        cal_sig = CalibratedClassifierCV(_make_top_pipe(args.top_config), method="sigmoid", cv=args.n_inner)
         cal_sig.fit(X[tr_outer], y[tr_outer])
         col_sig = np.array([list(cal_sig.classes_).index(c) for c in cls])
         P_sig[te] = cal_sig.predict_proba(X[te])[:, col_sig]
@@ -169,8 +188,8 @@ def main():
     # === Deployment: fit final base on ALL rows; fit T via inner-CV on ALL rows ===
     print(f"[05-cal] fitting deployment model on all {N} rows ...")
     t1 = time.time()
-    pipe = _make_top_pipe(); pipe.fit(X, y)
-    T_deploy, _ = fit_temperature_inner_cv(_make_top_pipe, X, y,
+    pipe = _make_top_pipe(args.top_config); pipe.fit(X, y)
+    T_deploy, _ = fit_temperature_inner_cv(lambda: _make_top_pipe(args.top_config), X, y,
                                             n_inner_folds=args.n_inner, random_state=args.seed)
     print(f"  deployment T = {T_deploy:.4f}  (inner-CV fit on all rows took {time.time()-t1:.0f}s)")
     with open(args.out, "wb") as f:

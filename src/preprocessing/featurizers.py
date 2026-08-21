@@ -12,17 +12,19 @@ from __future__ import annotations
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
 
-from .tokenizers import tok_cpu, tok_comma_pipe
+from .tokenizers import tok_cpu, tok_comma_pipe, tok_cpu_v2
 
 
 class CountVecFeaturizer:
     """Sparse bag-of-tokens featurizer wrapping sklearn's ``CountVectorizer``.
 
     Args:
-        tokenizer: either "cpu" (split on `,|_`) or "comma_pipe" (split on `,|`).
+        tokenizer: "cpu" (split on `,|_`), "comma_pipe" (split on `,|`), or
+            "cpu_v2" (as "cpu", plus TC numbers truncated to their 3-level
+            family and CAZy tokens augmented with a family-only fallback).
     """
     def __init__(self, tokenizer: str = "cpu"):
-        tk = {"cpu": tok_cpu, "comma_pipe": tok_comma_pipe}[tokenizer]
+        tk = {"cpu": tok_cpu, "comma_pipe": tok_comma_pipe, "cpu_v2": tok_cpu_v2}[tokenizer]
         self._cv = CountVectorizer(tokenizer=tk, token_pattern=None, lowercase=False)
         self.tokenizer_name = tokenizer
 

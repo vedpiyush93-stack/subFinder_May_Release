@@ -3,11 +3,12 @@
 
 Usage:
     python scripts/02_train_shallow.py --reuse                          # skip; verify artifacts present
-    python scripts/02_train_shallow.py --retrain                        # retrain all 9 shallow configs (~30min)
+    python scripts/02_train_shallow.py --retrain                        # retrain all 10 shallow configs (~20min)
     python scripts/02_train_shallow.py --retrain --only cpu__ET500_log2  # retrain one config only
 
-The 9 shallow configs are:
-    cpu__ET500_log2          <-- our winner  (CountVec_cpu × OvR(ExtraTrees 500, log2))
+The 10 shallow configs are:
+    cpuV2__ET500_log2        <-- deployed     (CountVec_cpu_v2 × OvR(ExtraTrees 500, log2))
+    cpu__ET500_log2          <-- v1 winner    (CountVec_cpu × OvR(ExtraTrees 500, log2))
     ftCbow_MM__ET500_sqrt    <-- our second  (FastText CBOW mean+max × OvR(ExtraTrees 500, sqrt))
     cv__BRF100               <-- paper baseline (CountVec_paper × OvR(BalancedRF 100))
     ftCbow__BRF100, ftSg__BRF100, w2vCbow__BRF100, w2vSg__BRF100, d2vDm__BRF100, d2vDbow__BRF100
@@ -50,6 +51,7 @@ from src.splits import rskf_splits
 
 SHALLOW_CONFIGS = {
     "cpu__ET500_log2":       dict(featurizer=("countvec", "cpu"),        clf="ET500_log2"),
+    "cpuV2__ET500_log2":     dict(featurizer=("countvec", "cpu_v2"),     clf="ET500_log2"),
     "ftCbow_MM__ET500_sqrt": dict(featurizer=("ft_meanmax", "cbow"),     clf="ET500_sqrt"),
     "cv__BRF100":            dict(featurizer=("countvec", "comma_pipe"), clf="BRF100"),
     "ftCbow__BRF100":        dict(featurizer=("emb_mean", "fasttext_cbow"), clf="BRF100"),
