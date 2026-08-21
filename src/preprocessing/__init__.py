@@ -1,4 +1,6 @@
 from .tokenizers import tok_cpu, tok_comma_pipe, is_cazy
-from .featurizers import CountVecFeaturizer, EmbeddingMeanFeaturizer, EmbeddingMeanMaxFeaturizer
+from .featurizers import (CountVecFeaturizer, EmbeddingMeanFeaturizer,
+                          EmbeddingMeanMaxFeaturizer, Doc2VecInferFeaturizer)
 __all__ = ["tok_cpu", "tok_comma_pipe", "is_cazy",
-           "CountVecFeaturizer", "EmbeddingMeanFeaturizer", "EmbeddingMeanMaxFeaturizer"]
+           "CountVecFeaturizer", "EmbeddingMeanFeaturizer",
+           "EmbeddingMeanMaxFeaturizer", "Doc2VecInferFeaturizer"]

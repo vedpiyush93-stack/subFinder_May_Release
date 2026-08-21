@@ -61,7 +61,7 @@ CAZY_RE = re.compile(r"^(GH|PL|CE|CBM|GT|AA)[0-9]+$")
 def tok_cpu(s): return [t for t in TOK_RE.split(str(s)) if t]
 def is_cazy(t): return bool(CAZY_RE.match(str(t)))
 
-# Per-fold metrics (all 29 configs × n trials)
+# Per-fold metrics (all 25 configs × n trials)
 df_pf = pd.read_csv(REP / "per_fold_metrics.csv")
 print(f"  per-fold rows: {len(df_pf)}, configs: {df_pf.shorthand.nunique()}")
 
@@ -227,7 +227,7 @@ handles = [Patch(facecolor=c, edgecolor="black", linewidth=0.5, label=PRETTY_FAM
            for f, c in FAMILY_COLOR.items() if (df_pf_c.family == f).any()]
 ax.legend(handles=handles, loc="lower right", title="Model family", title_fontsize=11,
           fontsize=10, frameon=True, facecolor="white", edgecolor="#cccccc")
-ax.set_title("Benchmark leaderboard — 29 configurations, 5×5 RSKF (best on top)",
+ax.set_title("Benchmark leaderboard — 25 configurations, 5×5 RSKF (best on top)",
              color=BLACK, loc="left", pad=12, fontsize=15, fontweight="bold")
 plt.tight_layout()
 plt.savefig(FIG/"fig1_benchmark_leaderboard.png"); plt.close()
@@ -269,7 +269,7 @@ for i, (_, r) in enumerate(top5_rev.iterrows()):
             fontsize=13, fontweight="bold", color=BLACK)
 ax.set_xlabel("Mean test accuracy ± 1 SD  (5×5 RSKF, n=25 trials)")
 ax.set_xlim(0.78, 0.96)
-ax.set_title("Top-5 podium — best five of the 29 benchmarked configurations",
+ax.set_title("Top-5 podium — best five of the 25 benchmarked configurations",
              loc="left", fontsize=16, fontweight="bold")
 # in-figure callout below the chart
 fig.text(0.5, 0.02,
@@ -357,7 +357,7 @@ complete_retrain = set(ret_counts[ret_counts == 25].index)
 incomplete = set(df_retr.shorthand.unique()) - complete_retrain
 missing_in_retrain = set(orig.shorthand.unique()) - set(df_retr.shorthand.unique())
 print(f"  reproducibility data: {len(orig)} orig rows, {len(df_retr)} retrained rows from rep_1/")
-print(f"  configs with FULL 25-trial retrain: {len(complete_retrain)}/29")
+print(f"  configs with FULL 25-trial retrain: {len(complete_retrain)}/25")
 if incomplete: print(f"  partial retrain (excluded): {sorted(incomplete)}")
 if missing_in_retrain: print(f"  no retrain at all (excluded): {sorted(missing_in_retrain)}")
 df_retr = df_retr[df_retr.shorthand.isin(complete_retrain)]
@@ -1129,7 +1129,7 @@ add_footer(s)
 # Slide 3 — What we benchmarked
 s = prs.slides.add_slide(BLANK)
 add_title(s, "Benchmark scope")
-add_subtitle(s, f"29 configurations = (3 featurizer families × 1 classifier swap) + (4 DL architectures × 5 embeddings)")
+add_subtitle(s, f"25 configurations = (3 featurizer families × 1 classifier swap) + (4 DL architectures × 4 embeddings)")
 tx = s.shapes.add_textbox(Inches(0.6), Inches(1.8), Inches(12), Inches(5))
 tf = tx.text_frame; tf.word_wrap = True
 rows = [
@@ -1137,7 +1137,7 @@ rows = [
     ("Embeddings retrained per fold (6)", "FastText cbow/sg, Word2Vec cbow/sg, Doc2Vec dm/dbow — leak-free (test tokens never enter embedding training)"),
     ("Classifiers", "OvR(BalancedRF n=100) baseline; OvR(ExtraTrees n=500 log2/sqrt) ours; 4 DL architectures from paper (vanilla LSTM, LSTM+attention, just-attention, 4-block transformer)"),
     ("Hyperparameters", "Paper-verbatim for shallow + DL except batch (DL_BATCH=1024, Transformer=4096 for M4 Max throughput); EarlyStopping patience=30, validation 25%, Adam 1e-4"),
-    ("Total", "29 configs × 25 trials = 725 fits; reused per-fold embeddings = reproducible to ~1e-3 on DL, bit-identical on sklearn"),
+    ("Total", "25 configs × 25 trials = 725 fits; global frozen embeddings = reproducible to ~1e-3 on DL, bit-identical on sklearn"),
 ]
 for i, (k, v) in enumerate(rows):
     p = tf.add_paragraph() if i else tf.paragraphs[0]
@@ -1159,10 +1159,10 @@ def add_callout(slide, text, top=6.7, left=0.4, width=12.5, fc=RGBColor(0xff,0xf
 
 # Slide 4 — Benchmark results: leaderboard
 s = prs.slides.add_slide(BLANK)
-add_title(s, "Benchmark leaderboard — 29 configurations")
+add_title(s, "Benchmark leaderboard — 25 configurations")
 add_subtitle(s, "Mean test accuracy ± 1 SD across the full 5×5 RSKF grid (n=25 trials per config). Best on top.")
 add_image_centered(s, FIG/"fig1_benchmark_leaderboard.png", top=1.45, max_h=5.0)
-add_callout(s, "HOW TO READ — every row is one of 29 configurations (featurizer → classifier pair); "
+add_callout(s, "HOW TO READ — every row is one of 25 configurations (featurizer → classifier pair); "
                 "bars are sorted descending so the strongest configs are at the top. Green = our shallow winners; "
                 "navy = paper's Balanced RF baselines; orange = paper's deep architectures. "
                 "Numbers next to each bar are the 25-trial mean accuracy.")
@@ -1184,7 +1184,7 @@ add_footer(s)
 # Slide 6 — Reproducibility (the CODE-pipeline question; orthogonal to Slide 13)
 s = prs.slides.add_slide(BLANK)
 add_title(s, "Reproducibility — does a rerun give the same number?")
-add_subtitle(s, f"X-axis = Δ accuracy (rep_2 mean − rep_1 mean, should be ≈ 0 for reproducibility). 5×5 RSKF data splits are FIXED across reps; only model-init seed (REPRO_REP_SEED) varies. Restricted to the {len(complete_retrain)}/29 configs with a COMPLETE 25-trial run in both reps.")
+add_subtitle(s, f"X-axis = Δ accuracy (rep_2 mean − rep_1 mean, should be ≈ 0 for reproducibility). 5×5 RSKF data splits are FIXED across reps; only model-init seed (REPRO_REP_SEED) varies. Restricted to the {len(complete_retrain)}/25 configs with a COMPLETE 25-trial run in both reps.")
 add_image_centered(s, FIG/"fig3_reproducibility.png", top=1.55, max_h=4.9)
 add_callout(s, "WHAT THIS IS — re-running the SAME (config, seed, fold) with a DIFFERENT model-init seed (REPRO_REP_SEED), "
                 "do we get the same accuracy? Our ExtraTrees winners (green) are random_state-seeded so they're identical "
@@ -1200,7 +1200,7 @@ if _xrep_summary_path.exists():
     _xrep = _json.loads(_xrep_summary_path.read_text())
     s = prs.slides.add_slide(BLANK)
     add_title(s, "Cross-rep reproducibility — 5 reps × 25 trials, data splits FIXED")
-    add_subtitle(s, f"Model-init seed varies (REPRO_REP_SEED=1000/2000/3000/4000/5000); 5×5 RSKF data splits held fixed. Each row = one of 29 configs; 5 dots = per-rep means; square = cross-rep mean; bar = min↔max range.")
+    add_subtitle(s, f"Model-init seed varies (REPRO_REP_SEED=1000/2000/3000/4000/5000); 5×5 RSKF data splits held fixed. Each row = one of 25 configs; 5 dots = per-rep means; square = cross-rep mean; bar = min↔max range.")
     add_image_centered(s, FIG/"fig14_cross_rep_stability.png", top=1.45, max_h=5.0)
     add_callout(s, f"HEADLINE — winner cpu__ET500_log2: <b>{_xrep['winner_cross_rep_mean']:.4f} ± {_xrep['winner_cross_rep_std']:.4f}</b> across 5 reps "
                     f"(range {_xrep['winner_cross_rep_min']:.4f}–{_xrep['winner_cross_rep_max']:.4f}, deterministic to 4th decimal). "
@@ -1456,9 +1456,9 @@ add_callout(s, "WHAT THIS IS — the question is: for ONE family, how much does 
                 "0.55). Our shallow ensemble is BOTH more accurate AND more stable.")
 add_footer(s)
 
-# Slide A1 — APPENDIX: Full 29-config leaderboard with decoded featurizer + classifier
+# Slide A1 — APPENDIX: Full 25-config leaderboard with decoded featurizer + classifier
 s = prs.slides.add_slide(BLANK)
-add_title(s, "Appendix · Full 29-config leaderboard")
+add_title(s, "Appendix · Full 25-config leaderboard")
 add_subtitle(s, "Every configuration benchmarked; rank 1 highlighted gold, ranks 2-3 pale gold.")
 nrA = len(full_lb) + 1
 tshapeA = s.shapes.add_table(nrA, 7, Inches(0.2), Inches(1.45), Inches(13.0), Inches(5.6))

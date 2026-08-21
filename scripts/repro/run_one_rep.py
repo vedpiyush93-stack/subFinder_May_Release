@@ -37,22 +37,10 @@ DL_FT_SG   = ["ftSg__LSTM",   "ftSg__LSTMattn",
 DL_OTHER   = ["w2vCbow__LSTM", "w2vCbow__LSTMattn",
               "w2vCbow__JustAttn", "w2vCbow__Trans",
               "w2vSg__LSTM",   "w2vSg__LSTMattn",
-              "w2vSg__JustAttn",  "w2vSg__Trans",
-              "d2vDm__LSTM",   "d2vDm__LSTMattn",
-              "d2vDm__JustAttn",  "d2vDm__Trans"]                   # no FT
-
-
-def _cleanup_decompressed_npys(flavor_glob: str):
-    """Delete decompressed .npy ngram sidecars (keep the .xz)."""
-    import glob
-    pat = str(ROOT / f"artifacts/embeddings_cache/r*_f*/fasttext_{flavor_glob}_model/*.npy")
-    n = 0; freed = 0
-    for f in glob.glob(pat):
-        if f.endswith(".npy.xz"): continue
-        sz = os.path.getsize(f)
-        os.remove(f); n += 1; freed += sz
-    if n:
-        print(f"  [cleanup] removed {n} decompressed .npy ({freed/1024**3:.1f} GB)", flush=True)
+              "w2vSg__JustAttn",  "w2vSg__Trans"]                   # no FT
+# Doc2Vec DL configs were dropped in May 2026: a sequence model has no sequence
+# to run over when the embedding emits one vector per document. Doc2Vec is still
+# benchmarked in the shallow configs, where a document vector is the right input.
 
 
 def _run(cmd: list[str], log_path: Path):
@@ -92,10 +80,10 @@ def main():
 
     # -------- shallow phases --------
     if not args.skip_shallow:
-        for label, configs, ft_flavor in [
-            ("shallow_other",   SHALLOW_OTHER,   None),
-            ("shallow_ftCbow",  SHALLOW_FT_CBOW, "cbow_shallow"),
-            ("shallow_ftSg",    SHALLOW_FT_SG,   "sg_shallow"),
+        for label, configs in [
+            ("shallow_other",   SHALLOW_OTHER),
+            ("shallow_ftCbow",  SHALLOW_FT_CBOW),
+            ("shallow_ftSg",    SHALLOW_FT_SG),
         ]:
             t0 = time.time()
             print(f"\n--- rep_{rep_id} phase: {label} ({len(configs)} configs)", flush=True)
@@ -106,28 +94,24 @@ def main():
                             stdout=open(log_root/f"{label}.log", "ab"),
                             stderr=subprocess.STDOUT)
             print(f"--- {label} done ({time.time()-t0:.0f}s)", flush=True)
-            if ft_flavor:
-                _cleanup_decompressed_npys(ft_flavor)
 
     # -------- DL phases --------
     if not args.skip_dl:
-        for label, configs, ft_flavor in [
-            ("dl_other",  DL_OTHER,  None),
-            ("dl_ftCbow", DL_FT_CBOW, "cbow_dl"),
-            ("dl_ftSg",   DL_FT_SG,   "sg_dl"),
+        for label, configs in [
+            ("dl_other",  DL_OTHER),
+            ("dl_ftCbow", DL_FT_CBOW),
+            ("dl_ftSg",   DL_FT_SG),
         ]:
             t0 = time.time()
             print(f"\n--- rep_{rep_id} phase: {label} ({len(configs)} configs)", flush=True)
             subprocess.run([py, str(ROOT/"scripts/03_train_deep.py"),
                              "--retrain", "--only", *configs,
-                             "--cache-dir", str(ROOT/"artifacts/embeddings_cache"),
+                             "--emb-dir", str(ROOT/"artifacts/embeddings"),
                              "--out-dir",   str(out_dir/"predictions")],
                             env=env, check=False,
                             stdout=open(log_root/f"{label}.log", "ab"),
                             stderr=subprocess.STDOUT)
             print(f"--- {label} done ({time.time()-t0:.0f}s)", flush=True)
-            if ft_flavor:
-                _cleanup_decompressed_npys(ft_flavor)
 
     # -------- benchmark + calibration on this rep's artifacts --------
     print(f"\n--- rep_{rep_id} 04_benchmark", flush=True)

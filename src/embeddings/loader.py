@@ -1,78 +1,61 @@
-"""Load a gensim ``FastText`` (or any) embedding model, transparently
-auto-decompressing xz-compressed n-gram bucket sidecars.
+"""Load the six global embeddings from ``artifacts/embeddings/``.
 
-Why this exists
----------------
-GitHub LFS has a 2 GB per-file hard limit. The raw FastText n-gram bucket
-table (``*.model.wv.vectors_ngrams.npy``) is 2.235 GB. We ship a lossless
-xz-compressed version (~1.86 GB) instead, then decompress at load time.
+Layout (one model per architecture — no per-fold copies)::
 
-The decompressed bytes are bit-identical to the source-of-truth (gzip is
-a lossless algorithm; xz is too). Verified empirically that
-``load_fasttext("model.model")`` after decompress gives the same vector
-for both in-vocab tokens and OOV-via-n-gram tokens as loading from the
-original uncompressed model dir.
+    artifacts/embeddings/
+      fasttext_cbow.npz     compacted, collision-free (words + fragments)
+      fasttext_sg.npz
+      word2vec_cbow.npz     token -> vector table
+      word2vec_sg.npz
+      doc2vec_dm.model      gensim model, training doc-vectors stripped
+      doc2vec_dbow.model
 
-Usage
------
-    from src.embeddings.loader import load_fasttext
-
-    m = load_fasttext("artifacts/embeddings_cache/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model")
-    v = m.wv["GH13_99"]      # OOV → n-gram-resolved vector, not zero
-    in_vocab = m.wv["GT2"]   # in-vocab → standard lookup
-
-Decompression is done once per ``.npy.xz`` sibling (cached on disk next to
-the .xz file). Subsequent loads find the .npy directly and skip the
-decompress step.
+Every model is trained once on the unsupervised corpus and frozen. Supervised
+sequences are only ever *fed through* these models, never trained into them,
+so there is no per-fold variant to pick and nothing to keep out of a test fold.
 """
 from __future__ import annotations
-import os
-import lzma
-import shutil
-import time
 from pathlib import Path
 
-
-def _decompress_xz_sibling(xz_path: str | Path) -> str:
-    """Decompress ``foo.npy.xz`` → ``foo.npy`` next to it. No-op if already
-    decompressed. Returns the .npy path."""
-    xz_path = str(xz_path)
-    target = xz_path[:-3]                          # strip ".xz"
-    if os.path.exists(target):
-        return target
-    t0 = time.time()
-    tmp = target + ".part"
-    with lzma.open(xz_path, "rb") as src, open(tmp, "wb") as dst:
-        shutil.copyfileobj(src, dst, length=4 * 1024 * 1024)
-    os.replace(tmp, target)
-    print(f"  [fasttext-loader] decompressed {os.path.basename(xz_path)} "
-          f"({os.path.getsize(target)/1024**3:.2f} GB) in {time.time()-t0:.1f}s")
-    return target
+ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_DIR = ROOT / "artifacts/embeddings"
 
 
-def load_fasttext(model_path: str | Path):
-    """Drop-in replacement for ``gensim.models.FastText.load()``.
+def embedding_path(arch: str, emb_dir=None) -> Path:
+    emb_dir = Path(emb_dir or DEFAULT_DIR)
+    return emb_dir / (f"{arch}.model" if arch.startswith("doc2vec_") else f"{arch}.npz")
 
-    Before calling the upstream loader, walks the model's directory and
-    decompresses any ``*.npy.xz`` sidecars to their ``*.npy`` form (one-time
-    per file). Then defers to ``FastText.load()`` as usual.
 
-    Parameters
-    ----------
-    model_path : path to the ``.model`` pickle (the gensim convention).
+def load_word_vectors(arch: str, emb_dir=None):
+    """Return a ``wv``-like object (``wv[token]``, ``token in wv``) for a
+    FastText or Word2Vec architecture."""
+    path = embedding_path(arch, emb_dir)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found — build it with `python scripts/01_train_embeddings.py --retrain`")
+    if arch.startswith("fasttext_"):
+        from .compact import load_compact
+        return load_compact(path)
+    if arch.startswith("word2vec_"):
+        from .compact import load_word_vectors as _load
+        return _load(path)
+    raise ValueError(f"{arch!r} has no word-vector form; use load_doc2vec() for Doc2Vec")
 
-    Returns
-    -------
-    The fully-loaded ``gensim.models.FastText`` instance, with n-gram OOV
-    fallback fully functional via ``model.wv[token]``.
-    """
-    from gensim.models import FastText
-    model_path = str(model_path)
-    model_dir = os.path.dirname(model_path)
 
-    # find + decompress every .npy.xz sibling we haven't already decompressed
-    for f in sorted(os.listdir(model_dir)):
-        if f.endswith(".npy.xz"):
-            _decompress_xz_sibling(os.path.join(model_dir, f))
+def load_doc2vec(arch: str, emb_dir=None):
+    """Return the gensim ``Doc2Vec`` model. Doc2Vec configs featurize with
+    ``infer_vector`` (a document vector), not with word vectors — see
+    ``src.preprocessing.featurizers.Doc2VecInferFeaturizer``."""
+    from gensim.models.doc2vec import Doc2Vec
+    path = embedding_path(arch, emb_dir)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found — build it with `python scripts/01_train_embeddings.py --retrain`")
+    return Doc2Vec.load(str(path))
 
-    return FastText.load(model_path)
+
+def load_embedding(arch: str, emb_dir=None):
+    """Dispatch on architecture: Doc2Vec → model, others → word vectors."""
+    if arch.startswith("doc2vec_"):
+        return load_doc2vec(arch, emb_dir)
+    return load_word_vectors(arch, emb_dir)

@@ -2,14 +2,21 @@
 
 Each entry in ``EMB_ARCHITECTURES`` is ``(constructor_fn, kind)``:
     constructor_fn(sentences) -> trained model
-    kind                       -> "wv" (FastText/Word2Vec) or "doc" (Doc2Vec)
+    kind                       -> "wv"  (FastText/Word2Vec — featurized by word vectors)
+                                  "doc" (Doc2Vec — featurized by inferred document vectors)
 
-The 6 architectures correspond to paper's grid:
-    {FastText, Word2Vec, Doc2Vec} × {cbow|dm,  skip-gram|dbow}
+The 6 architectures correspond to the paper's grid:
+    {FastText, Word2Vec, Doc2Vec} x {cbow|dm, skip-gram|dbow}
 
 All hyperparameters match the paper exactly (300-d, window=7, min_count=5,
-60 epochs, 15 workers); the only knob exposed at the script level is the
-optional ``--retrain`` flag in 01_train_embeddings.py.
+60 epochs). ``bucket`` is stated explicitly rather than left to gensim's
+default so the value is visible: it is the paper's 2,000,000 and it governs
+*training* only — the trained FastText tables are compacted to collision-free
+storage afterwards (see ``src.embeddings.compact``), which is a storage change,
+not a retraining.
+
+Since May 2026 these are trained ONCE on the unsupervised corpus and frozen;
+supervised sequences are only fed through them. There are no per-fold variants.
 """
 from __future__ import annotations
 from gensim.models import FastText, Word2Vec, Doc2Vec
@@ -21,12 +28,16 @@ EMB_HYPERPARAMS = dict(
     window=7,
     min_count=5,
     epochs=60,
-    workers=15,
+    workers=14,
+    seed=42,
 )
+
+# Paper's FastText n-gram bucket count. Training-time only.
+FASTTEXT_BUCKET = 2_000_000
 
 
 def _fasttext(sentences, sg: int):
-    return FastText(sentences=sentences, sg=sg, **EMB_HYPERPARAMS)
+    return FastText(sentences=sentences, sg=sg, bucket=FASTTEXT_BUCKET, **EMB_HYPERPARAMS)
 
 def _word2vec(sentences, sg: int):
     return Word2Vec(sentences=sentences, sg=sg, **EMB_HYPERPARAMS)
@@ -52,3 +63,21 @@ def train_embedding(name: str, sentences: list[list[str]]):
         raise KeyError(f"unknown embedding {name!r}; choose from {list(EMB_ARCHITECTURES)}")
     ctor, _kind = EMB_ARCHITECTURES[name]
     return ctor(sentences)
+
+
+def strip_training_docvecs(model):
+    """Drop a Doc2Vec model's per-training-document vectors.
+
+    ``infer_vector`` reads only ``dv.vector_size`` — the training document
+    matrix (359,763 x 300 = 412 MB) is never consulted when featurizing a new
+    PUL. Dropping it leaves inference bitwise unchanged (asserted at build
+    time in ``scripts/01_train_embeddings.py``) and takes each Doc2Vec model
+    down to ~3.3 MB.
+    """
+    import numpy as np
+    model.dv.vectors = np.zeros((1, model.dv.vector_size), dtype=np.float32)
+    if hasattr(model.dv, "index_to_key"):
+        model.dv.index_to_key = [0]
+    if hasattr(model.dv, "key_to_index"):
+        model.dv.key_to_index = {0: 0}
+    return model

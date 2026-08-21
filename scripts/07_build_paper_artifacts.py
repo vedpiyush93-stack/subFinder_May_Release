@@ -7,7 +7,7 @@ model — it loads classifier weights from artifacts/predictions/ and the
 calibrated final model from artifacts/final_model.pkl.
 
 Outputs (under docs/ and paper/):
-  docs/tables/leaderboard.csv               29-config 5×5 RSKF leaderboard
+  docs/tables/leaderboard.csv               25-config 5×5 RSKF leaderboard
   docs/tables/per_substrate_metrics.csv     per-substrate P/R/F1 for top model
   docs/tables/per_substrate_sig_funnel.csv  per-substrate sig-gene count funnels (K=3)
   docs/tables/calibration_report.csv        4-protocol calibration metrics

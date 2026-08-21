@@ -12,6 +12,18 @@ The 9 shallow configs are:
     cv__BRF100               <-- paper baseline (CountVec_paper × OvR(BalancedRF 100))
     ftCbow__BRF100, ftSg__BRF100, w2vCbow__BRF100, w2vSg__BRF100, d2vDm__BRF100, d2vDbow__BRF100
 
+Embeddings (May 2026)
+---------------------
+The six embeddings are global — trained once on the unsupervised corpus and
+frozen (scripts/01_train_embeddings.py). There is no per-fold variant to select,
+so a config's feature matrix no longer depends on the split: we featurize all
+1,030 PULs once per config and slice it per fold, instead of re-running the
+featurizer 25 times over the same rows.
+
+The two Doc2Vec configs featurize with *document* vectors via ``infer_vector``
+(deterministically seeded), not with word vectors — that is what Doc2Vec is
+trained to produce, and DBOW never trains word vectors at all.
+
 Outputs per (config, seed, fold):
     artifacts/predictions/<config>/r<seed>_f<fold>/
       classifier.joblib  trained sklearn Pipeline
@@ -28,7 +40,9 @@ from sklearn.pipeline import Pipeline
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from src.preprocessing import CountVecFeaturizer, EmbeddingMeanFeaturizer, EmbeddingMeanMaxFeaturizer
+from src.preprocessing import (CountVecFeaturizer, EmbeddingMeanFeaturizer,
+                               EmbeddingMeanMaxFeaturizer, Doc2VecInferFeaturizer)
+from src.embeddings.loader import load_word_vectors, load_doc2vec
 from src.preprocessing.tokenizers import tok_cpu, tok_comma_pipe
 from src.shallow import build_shallow
 from src.splits import rskf_splits
@@ -42,87 +56,58 @@ SHALLOW_CONFIGS = {
     "ftSg__BRF100":          dict(featurizer=("emb_mean", "fasttext_sg"),   clf="BRF100"),
     "w2vCbow__BRF100":       dict(featurizer=("emb_mean", "word2vec_cbow"), clf="BRF100"),
     "w2vSg__BRF100":         dict(featurizer=("emb_mean", "word2vec_sg"),   clf="BRF100"),
-    "d2vDm__BRF100":         dict(featurizer=("emb_mean", "doc2vec_dm"),    clf="BRF100"),
-    "d2vDbow__BRF100":       dict(featurizer=("emb_mean", "doc2vec_dbow"),  clf="BRF100"),
+    "d2vDm__BRF100":         dict(featurizer=("doc_infer", "doc2vec_dm"),   clf="BRF100"),
+    "d2vDbow__BRF100":       dict(featurizer=("doc_infer", "doc2vec_dbow"), clf="BRF100"),
 }
 
 
-def _load_emb_npz(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
-    """Lightweight npz-only KeyedVectors shim — for W2V/D2V (no n-grams).
+_FEATURIZER_CACHE: dict = {}
 
-    For FastText we use _load_emb_ft (full model + n-gram fallback) instead.
 
-    Compatible with both the shipped npz schema (``vocab`` / ``vectors``) and
-    the legacy ``keys`` / ``vectors`` schema used by older versions of
-    ``01_train_embeddings.py``.
+def _build_featurizer(spec, emb_dir):
+    """Instantiate the featurizer for one config spec.
+
+    Embeddings are global, so this no longer takes a fold key. Loaded models are
+    memoised — a run touches each architecture once, not once per fold.
     """
-    npz = np.load(cache_dir/fold_key/f"{arch}_{kind}.npz", allow_pickle=True)
-    vocab_field = "vocab" if "vocab" in npz.files else "keys"
-    keys = npz[vocab_field]; vecs = npz["vectors"]
-    class _WV:
-        def __init__(self, keys, vecs):
-            self.vector_size = vecs.shape[1] if vecs.shape[0] else 300
-            self._idx = {str(k): i for i, k in enumerate(keys)}
-            self.vectors = vecs
-        def __getitem__(self, t):
-            i = self._idx.get(t)
-            if i is None: raise KeyError(t)
-            return self.vectors[i]
-        def __contains__(self, t): return t in self._idx
-    return _WV(keys, vecs)
-
-
-def _load_emb_ft(cache_dir: Path, fold_key: str, arch: str, kind: str = "shallow"):
-    """Load the FULL FastText gensim model so wv[t] does n-gram fallback on OOV.
-
-    Priority:
-      1. If ``FT_FULL_DIR`` env var is set AND contains the model, use it
-         (development convenience — avoids the ~70 s xz decompress per fold).
-      2. Otherwise use the release-repo path with auto-decompress of .npy.xz
-         (the normal reviewer path after ``git clone`` + ``git lfs pull``).
-    """
-    import os
-    arch_stem = arch.replace("fasttext_", "")     # "cbow" or "sg"
-    sub = f"{arch}_{kind}_model"
-    model_fn = f"fasttext_{arch_stem}.model"
-
-    ft_full = os.environ.get("FT_FULL_DIR")
-    if ft_full:
-        src_path = Path(ft_full)/fold_key/sub/model_fn
-        if src_path.exists():
-            from gensim.models import FastText
-            return FastText.load(str(src_path)).wv
-
-    from src.embeddings.loader import load_fasttext
-    rel_path = cache_dir/fold_key/sub/model_fn
-    if rel_path.exists():
-        return load_fasttext(rel_path).wv
-
-    raise FileNotFoundError(
-        f"FastText full model not found at {rel_path}"
-        + (f" or {Path(ft_full)/fold_key/sub/model_fn}" if ft_full else "")
-        + ". Either pull from LFS (git lfs fetch) or set FT_FULL_DIR to a "
-        "local regenerated cache (see scripts/01_train_embeddings.py).")
-
-
-def _build_featurizer(spec, fold_key: str, cache_dir: Path):
     kind = spec[0]
     if kind == "countvec":
         return CountVecFeaturizer(tokenizer=spec[1])
-    arch_alias = {"fasttext_cbow": "fasttext_cbow", "fasttext_sg": "fasttext_sg",
-                  "word2vec_cbow": "word2vec_cbow", "word2vec_sg": "word2vec_sg",
-                  "doc2vec_dm": "doc2vec_dm", "doc2vec_dbow": "doc2vec_dbow"}
+
+    key = (kind, spec[1])
+    if key in _FEATURIZER_CACHE:
+        return _FEATURIZER_CACHE[key]
+
     if kind == "emb_mean":
-        arch = arch_alias[spec[1]]
-        if arch.startswith("fasttext_"):
-            wv = _load_emb_ft(cache_dir, fold_key, arch, kind="shallow")
-        else:
-            wv = _load_emb_npz(cache_dir, fold_key, arch, kind="shallow")
-        return EmbeddingMeanFeaturizer(wv, tokenizer="comma_pipe")
-    if kind == "ft_meanmax":
-        wv = _load_emb_ft(cache_dir, fold_key, "fasttext_cbow", kind="shallow")
-        return EmbeddingMeanMaxFeaturizer(wv, tokenizer="comma_pipe")
-    raise ValueError(f"unknown featurizer kind {kind!r}")
+        feat = EmbeddingMeanFeaturizer(load_word_vectors(spec[1], emb_dir), tokenizer="comma_pipe")
+    elif kind == "ft_meanmax":
+        feat = EmbeddingMeanMaxFeaturizer(load_word_vectors("fasttext_cbow", emb_dir), tokenizer="comma_pipe")
+    elif kind == "doc_infer":
+        feat = Doc2VecInferFeaturizer(load_doc2vec(spec[1], emb_dir), tokenizer="comma_pipe")
+    else:
+        raise ValueError(f"unknown featurizer kind {kind!r}")
+
+    _FEATURIZER_CACHE[key] = feat
+    return feat
+
+
+_DENSE_CACHE: dict = {}
+
+
+def _dense_features(spec, X, emb_dir):
+    """Dense feature matrix for ALL rows, computed once per config spec.
+
+    Safe because a global embedding is identical for every fold: the rows a
+    fold trains on are selected afterwards by indexing. Nothing about a test
+    row influences a train row's vector.
+    """
+    key = (spec[0], spec[1])
+    if key not in _DENSE_CACHE:
+        t0 = time.time()
+        _DENSE_CACHE[key] = _build_featurizer(spec, emb_dir).transform(list(X))
+        print(f"[02-shallow] featurized {len(X)} PULs with {key[1]} "
+              f"({_DENSE_CACHE[key].shape[1]}-d, {time.time()-t0:.1f}s)", flush=True)
+    return _DENSE_CACHE[key]
 
 
 def main():
@@ -131,11 +116,11 @@ def main():
     ap.add_argument("--retrain", action="store_true")
     ap.add_argument("--only",    nargs="+", default=None, help="subset of config shorthands to retrain")
     ap.add_argument("--only-folds", nargs="+", default=None, help="subset of fold keys like 'r42_f0' (default: all 25)")
-    ap.add_argument("--cache-dir", default=str(ROOT/"artifacts/embeddings_cache"))
+    ap.add_argument("--emb-dir",   default=str(ROOT/"artifacts/embeddings"))
     ap.add_argument("--out-dir",   default=str(ROOT/"artifacts/predictions"))
     args = ap.parse_args()
     if not args.reuse and not args.retrain: ap.error("specify --reuse or --retrain")
-    out_dir = Path(args.out_dir); cache_dir = Path(args.cache_dir)
+    out_dir = Path(args.out_dir); emb_dir = Path(args.emb_dir)
 
     if args.reuse:
         ok = 0; total = 0
@@ -165,11 +150,11 @@ def main():
                 print(f"[02-shallow] {fold_key} {cfg}: SKIP (meta.json exists)", flush=True)
                 continue
             t_t = time.time()
-            feat = _build_featurizer(spec["featurizer"], fold_key, cache_dir)
             # For sparse-CountVec we fit + transform via Pipeline; for dense embedding featurizers
             # we transform manually and feed dense matrix to the OvR classifier.
             clf = build_shallow(spec["clf"])
             if spec["featurizer"][0] == "countvec":
+                feat = _build_featurizer(spec["featurizer"], emb_dir)
                 pipe = Pipeline([("cv", feat._cv), ("vr", clf)])
                 pipe.fit(X[tr_outer], y[tr_outer])
                 joblib.dump(pipe, out/"classifier.joblib", compress=3)
@@ -177,7 +162,8 @@ def main():
                 P_tr = pipe.predict_proba(X[tr_outer])
                 classes = list(pipe.named_steps["vr"].classes_)
             else:
-                Xtr_d = feat.transform(X[tr_outer]); Xte_d = feat.transform(X[te])
+                F = _dense_features(spec["featurizer"], X, emb_dir)
+                Xtr_d = F[tr_outer]; Xte_d = F[te]
                 clf.fit(Xtr_d, y[tr_outer])
                 joblib.dump({"featurizer": "dense", "clf": clf, "fold_key": fold_key,
                               "config": cfg}, out/"classifier.joblib", compress=3)

@@ -17,23 +17,16 @@
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Embedding cache — the *.npz vector files SHIP IN-REPO (only ~446 MB total
-# for all 6 architectures × 2 regimes × 25 folds). Reviewers can retrain
-# downstream classifiers (the 20 DL configs and the 7 BRF+embedding shallow
-# variants) directly against the shipped vectors without regenerating.
+# Embeddings (May 2026 rewrite)
+# Six global models in artifacts/embeddings/, ~38 MB total, all tracked in
+# regular git — no LFS, no per-fold copies.
 #
-# What we still DON'T ship: the gensim *_model/ subdirectories (~255 GB).
-# Those are only needed if you want to (a) re-train the embeddings from
-# scratch, or (b) use FastText's n-gram OOV resolution at inference time.
+# What they replaced: artifacts/embeddings_cache/, which held one gensim model
+# per (seed, fold, architecture, regime) — 300 models, 186 GB, of which ~186 GB
+# was FastText n-gram hash tables (2.24 GB each, 0.55% of rows reachable).
+# See scripts/01_train_embeddings.py for why the per-fold split was dropped.
 # ---------------------------------------------------------------------------
-# Default-exclude the gensim *_model/ subdirs (the heavy ones).
-artifacts/embeddings_cache/*/*_model/
-artifacts/embeddings_cache/*/*_model
-# But ALLOW the small .model pickle + the xz-compressed .npy file inside.
-# Together those are sufficient for full FastText n-gram OOV inference.
-!artifacts/embeddings_cache/*/*_model/
-!artifacts/embeddings_cache/*/*_model/*.model
-!artifacts/embeddings_cache/*/*_model/*.npy.xz
+artifacts/embeddings_cache/
 
 # ---------------------------------------------------------------------------
 # Python / build noise
@@ -84,12 +77,6 @@ release_zips/
 reproducibility/_*_logs/
 reproducibility/_chain_logs/
 reproducibility/rep_*/logs/
-# Decompressed FT ngram sidecars — auto-rebuilt by src/embeddings/loader.py
-artifacts/embeddings_cache/*/fasttext_*_model/*.vectors_ngrams.npy
-# Stale partial xz outputs (interrupted compression)
-artifacts/embeddings_cache/*/*_model/*.xz.tmp
-# Partial .npy decompress (load_fasttext interrupted mid-decompress)
-artifacts/embeddings_cache/**/*.npy.part
 # Wakeup-pipeline stash backups (only useful locally for rollback)
 artifacts/_passAB_backup_*/
 

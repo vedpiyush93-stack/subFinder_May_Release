@@ -1,34 +1,47 @@
 #!/usr/bin/env python3
-"""Train per-fold word embeddings (6 architectures × 25 splits = 150 models).
+"""Train the six global embeddings — once, on the unsupervised corpus.
 
-Each fold gets its own embedding training corpus to keep test tokens out of
-the embedding space (the leakage we fixed vs. the paper's pre-trained models).
+    python scripts/01_train_embeddings.py --reuse-cache   # verify what's shipped
+    python scripts/01_train_embeddings.py --retrain       # rebuild all six (~25 min)
+    python scripts/01_train_embeddings.py --retrain --only-archs fasttext_cbow
 
-Usage:
-    python scripts/01_train_embeddings.py --reuse-cache    # default: load from artifacts/embeddings_cache (already shipped in repo)
-    python scripts/01_train_embeddings.py --retrain        # retrain from scratch into artifacts/embeddings_cache (~6h)
-    python scripts/01_train_embeddings.py --retrain --only-archs fasttext_cbow fasttext_sg
-    python scripts/01_train_embeddings.py --unsupervised-csv data/unsupervised.csv  # use external corpus
+What changed (May 2026)
+-----------------------
+This script used to train one embedding per (seed, fold, architecture, regime)
+— 300 gensim models, 186 GB, because each FastText carries a 2.24 GB n-gram
+hash table. The per-fold split existed to keep test-fold tokens out of the
+embedding space.
 
-Cache state in this repo
-------------------------
-The cache is the same fold_cache_v2/ layout as the original benchmark, with one
-gensim model per (seed, fold, architecture). After a fresh ``git clone`` you
-already have the reduced subset needed for downstream training and inference:
+It bought nothing. Each fold's corpus was the unsupervised corpus plus that
+fold's ~824 supervised training rows — 0.08 % of the corpus — and all 1,030
+supervised PULs already appear *verbatim* in the unsupervised corpus, so
+holding 206 of them out changed nothing that was not already there. Adding the
+supervised rows raised the vocabulary by 44 tokens, 41 of which are 5-level TC
+numbers that ``tok_cpu_v2`` truncates away anyway.
 
-    * ``r*_f*/<arch>_<regime>.npz``               — vector lookup tables (regular git, ~446 MB)
-    * ``r*_f*/fasttext_*_model/{*.model, *.npy.xz}`` — n-gram-OOV-ready FastText
-      gensim model dirs (xz-compressed via Git LFS; ``src/embeddings/loader.py``
-      auto-decompresses on first load)
+So: train once on the unsupervised corpus, freeze, and only ever *feed*
+supervised sequences through. The embeddings never see a label, which is a
+stronger and simpler guarantee than the per-fold scheme provided.
 
-The Word2Vec / Doc2Vec full model dirs are NOT shipped — those architectures
-don't have n-gram OOV, so their ``.npz`` is functionally bit-identical to the
-full model dir for any inference. Use ``--retrain`` only when you want to
-rebuild the embeddings themselves from scratch (e.g. with a different
-unsupervised corpus).
+Outputs (``artifacts/embeddings/``, ~38 MB total)
+-------------------------------------------------
+  fasttext_cbow.npz   compacted collision-free store  (~14 MB)
+  fasttext_sg.npz     ''
+  word2vec_cbow.npz   token -> vector table            (~1.7 MB)
+  word2vec_sg.npz     ''
+  doc2vec_dm.model    gensim model, training doc-vectors stripped (~3.3 MB)
+  doc2vec_dbow.model  ''
+
+FastText is trained at the paper's ``bucket=2_000_000`` and then compacted:
+only ~11 k of those 2 M rows are reachable by any token the corpus can produce,
+so we store one row per real fragment, keyed by the fragment's text. Verified
+equivalent at build time and in tests/verify_reduced_embedding_files.py.
+
+Doc2Vec is featurized by *document* vectors (``infer_vector``), not word
+vectors — see ``src.preprocessing.featurizers.Doc2VecInferFeaturizer``.
 """
 from __future__ import annotations
-import argparse, sys, time
+import argparse, gzip, sys, time
 from pathlib import Path
 
 import numpy as np, pandas as pd
@@ -36,95 +49,104 @@ import numpy as np, pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from src.preprocessing.tokenizers import tok_comma_pipe
-from src.embeddings import EMB_ARCHITECTURES, train_embedding, EMB_HYPERPARAMS
-from src.splits import rskf_splits
+from src.embeddings import (EMB_ARCHITECTURES, train_embedding, EMB_HYPERPARAMS,
+                            FASTTEXT_BUCKET, strip_training_docvecs,
+                            build_compact, save_compact, save_word_vectors)
+
+DEFAULT_CORPUS = ROOT / "data/unsupervised_corpus.txt.gz"
+DEFAULT_OUT    = ROOT / "artifacts/embeddings"
+
+
+def read_corpus(path: Path) -> list[list[str]]:
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt") as fh:
+        return [ln.split() for ln in fh if ln.strip()]
+
+
+def supervised_tokens() -> set[str]:
+    df = pd.read_csv(ROOT / "data/Train_data.csv")
+    return {t for s in df["sig_gene_seq"].fillna("").values for t in tok_comma_pipe(s)}
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--reuse-cache", action="store_true",
-                    help="Skip training; verify cache integrity only.")
-    ap.add_argument("--retrain", action="store_true",
-                    help="Retrain all (seed, fold, arch) embeddings from scratch.")
-    ap.add_argument("--cache-dir", default=str(ROOT/"artifacts/embeddings_cache"),
-                    help="Per-fold embedding cache directory.")
-    ap.add_argument("--unsupervised-csv", default=None,
-                    help="Optional external unsupervised corpus to augment per-fold embedding training.")
-    ap.add_argument("--only-archs", nargs="+", default=None,
-                    help="Subset of architectures to train (default: all 6).")
-    ap.add_argument("--only-folds", nargs="+", type=str, default=None,
-                    help="Subset like 'r42_f0' 'r42_f1' (default: all 25 = 5 seeds × 5 folds).")
+    ap.add_argument("--reuse-cache", action="store_true", help="Verify the shipped embeddings, train nothing.")
+    ap.add_argument("--retrain", action="store_true", help="Retrain all six from scratch.")
+    ap.add_argument("--corpus", default=str(DEFAULT_CORPUS), help="Unsupervised corpus (one PUL per line).")
+    ap.add_argument("--out-dir", default=str(DEFAULT_OUT))
+    ap.add_argument("--only-archs", nargs="+", default=None)
     args = ap.parse_args()
     if not args.reuse_cache and not args.retrain:
         ap.error("specify either --reuse-cache or --retrain")
 
-    cache_dir = Path(args.cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    archs = args.only_archs or list(EMB_ARCHITECTURES)
 
     if args.reuse_cache:
-        # Verify integrity of cached models
-        n_total = n_ok = 0
-        for fold_dir in sorted(cache_dir.glob("r*_f*")):
-            for arch in EMB_ARCHITECTURES:
-                n_total += 1
-                kinds = ["shallow", "dl"]
-                for kind in kinds:
-                    if (fold_dir/f"{arch}_{kind}.npz").exists():
-                        n_ok += 1; break
-        print(f"[01-emb] cache check: {n_ok}/{n_total} (seed,fold,arch) entries present in {cache_dir}")
-        if n_ok == 0:
-            print("[01-emb] cache empty — download from README §5 or pass --retrain", file=sys.stderr)
+        from src.embeddings.loader import embedding_path
+        missing = [a for a in archs if not embedding_path(a, out_dir).exists()]
+        for a in archs:
+            p = embedding_path(a, out_dir)
+            mark = "ok " if p.exists() else "MISSING"
+            size = f"{p.stat().st_size/1024**2:6.1f} MB" if p.exists() else ""
+            print(f"[01-emb] {mark} {a:15s} {size}")
+        if missing:
+            print(f"[01-emb] {len(missing)} missing — rerun with --retrain", file=sys.stderr)
             sys.exit(1)
         return
 
-    # Retrain path
-    df = pd.read_csv(ROOT/"data/Train_data.csv")
-    X = df["sig_gene_seq"].fillna("").values; y = df["high_level_substr"].values
-    sentences_sup = [tok_comma_pipe(s) for s in X]
-    sentences_unsup = []
-    if args.unsupervised_csv:
-        df_u = pd.read_csv(args.unsupervised_csv)
-        sentences_unsup = [tok_comma_pipe(s) for s in df_u["sig_gene_seq"].fillna("").values]
-        print(f"[01-emb] augmenting with {len(sentences_unsup)} unsupervised PULs")
+    corpus = read_corpus(Path(args.corpus))
+    sup_tokens = supervised_tokens()
+    print(f"[01-emb] corpus: {len(corpus):,} unsupervised PULs from {args.corpus}")
+    print(f"[01-emb] supervised tokens (for FastText fragment coverage): {len(sup_tokens):,}")
+    print(f"[01-emb] hyperparameters: {EMB_HYPERPARAMS} | fasttext bucket={FASTTEXT_BUCKET:,}\n")
 
-    archs = args.only_archs or list(EMB_ARCHITECTURES.keys())
-    t_total = time.time()
-    for seed, fold, tr_outer, te, tr_inner, val in rskf_splits(y):
-        fold_key = f"r{seed}_f{fold}"
-        if args.only_folds and fold_key not in args.only_folds: continue
-        out_dir = cache_dir/fold_key; out_dir.mkdir(parents=True, exist_ok=True)
-        # Save splits for audit
-        np.savez(out_dir/"splits.npz",
-                 outer_tr=tr_outer, te=te, tr_inner=tr_inner, val=val)
-        for arch in archs:
-            t0 = time.time()
-            # Shallow embedding uses outer-train sentences; DL embedding excludes val
-            shallow_corpus = sentences_unsup + [sentences_sup[i] for i in tr_outer]
-            dl_corpus = sentences_unsup + [sentences_sup[i] for i in tr_inner]
-            for kind, corpus, train_idx in [("shallow", shallow_corpus, tr_outer),
-                                              ("dl", dl_corpus, tr_inner)]:
-                model = train_embedding(arch, corpus)
-                # Persist a thin npz with token vectors + the labeled-train-row indices
-                if EMB_ARCHITECTURES[arch][1] == "wv":
-                    keys = list(model.wv.key_to_index)
-                    vecs = np.stack([model.wv[k] for k in keys])
-                else:  # doc2vec — store inferred document vectors per outer-train row
-                    keys, vecs = [], []
-                    for i in train_idx:
-                        keys.append(int(i))
-                        vecs.append(model.infer_vector(sentences_sup[i]))
-                    vecs = np.stack(vecs)
-                # Write with field name 'vocab' (matches the shipped npz schema
-                # consumed by 02_train_shallow.py + 03_train_deep.py). The 'keys'
-                # alias is also written for backwards compat with anyone reading
-                # the older naming.
-                np.savez(out_dir/f"{arch}_{kind}.npz",
-                         vocab=np.array(keys, dtype=object),
-                         keys=np.array(keys, dtype=object),
-                         vectors=vecs,
-                         train_indices=np.array(list(train_idx), dtype=np.int64))
-            print(f"[01-emb] {fold_key} {arch} ({time.time()-t0:.0f}s)")
-    print(f"[01-emb] done in {(time.time()-t_total)/60:.1f}min")
+    t_all = time.time()
+    for arch in archs:
+        kind = EMB_ARCHITECTURES[arch][1]
+        t0 = time.time()
+        model = train_embedding(arch, corpus)
+        t_train = time.time() - t0
+        meta = dict(arch=arch, n_docs=len(corpus), trained_on="unsupervised_corpus_deduplicated",
+                    **{k: v for k, v in EMB_HYPERPARAMS.items()})
+
+        if arch.startswith("fasttext_"):
+            wv = model.wv
+            raw_mb = (wv.vectors_ngrams.nbytes + wv.vectors.nbytes) / 1024**2
+            compact = build_compact(wv, extra_tokens=sup_tokens)
+            # Build-time equivalence assertion over every token we will ever query.
+            probe = list(wv.key_to_index) + sorted(sup_tokens)
+            worst = max(float(np.abs(wv[t] - compact[t]).max()) for t in probe)
+            assert worst < 1e-5, f"{arch}: compaction diverged by {worst}"
+            out = out_dir / f"{arch}.npz"
+            save_compact(out, compact, bucket=FASTTEXT_BUCKET, **meta)
+            print(f"[01-emb] {arch:15s} trained {t_train/60:4.1f} min | "
+                  f"{raw_mb/1024:.2f} GB -> {out.stat().st_size/1024**2:.1f} MB | "
+                  f"{len(compact._fidx):,} fragments, {len(compact):,} words | "
+                  f"max|diff| vs full model {worst:.2e}")
+
+        elif arch.startswith("word2vec_"):
+            out = out_dir / f"{arch}.npz"
+            save_word_vectors(out, model.wv, **meta)
+            print(f"[01-emb] {arch:15s} trained {t_train/60:4.1f} min | "
+                  f"{out.stat().st_size/1024**2:.1f} MB | {len(model.wv):,} words")
+
+        else:  # doc2vec — featurized by inferred document vectors
+            probe_doc = sorted(sup_tokens)[:12]
+            model.random = np.random.RandomState(42); before = model.infer_vector(probe_doc)
+            dv_mb = model.dv.vectors.nbytes / 1024**2
+            strip_training_docvecs(model)
+            model.random = np.random.RandomState(42); after = model.infer_vector(probe_doc)
+            drift = float(np.abs(before - after).max())
+            assert drift == 0.0, f"{arch}: stripping training doc-vectors changed inference by {drift}"
+            out = out_dir / f"{arch}.model"
+            model.save(str(out))
+            total = sum(p.stat().st_size for p in out_dir.glob(f"{arch}.model*")) / 1024**2
+            print(f"[01-emb] {arch:15s} trained {t_train/60:4.1f} min | "
+                  f"dropped {dv_mb:.0f} MB of training doc-vectors -> {total:.1f} MB | "
+                  f"inference drift {drift:.1e}")
+
+    print(f"\n[01-emb] done in {(time.time()-t_all)/60:.1f} min -> {out_dir}")
 
 
 if __name__ == "__main__": main()

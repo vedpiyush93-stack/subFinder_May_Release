@@ -15,7 +15,6 @@ if [ "${1:-}" = "--once" ]; then ONCE=1; fi
 CONFIGS=(
   w2vCbow__LSTM w2vCbow__LSTMattn w2vCbow__JustAttn w2vCbow__Trans
   w2vSg__LSTM   w2vSg__LSTMattn   w2vSg__JustAttn   w2vSg__Trans
-  d2vDm__LSTM   d2vDm__LSTMattn   d2vDm__JustAttn   d2vDm__Trans
 )
 
 render() {

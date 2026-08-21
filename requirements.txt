@@ -19,14 +19,31 @@ imbalanced-learn>=0.11
 keras>=3.0
 tensorflow==2.18.0   # CPU+Metal-compatible pin
 
-# Apple Silicon GPU acceleration — install ONLY on macOS arm64. On Linux/x86
-# pip will skip it automatically (no matching wheel).
+# Apple Silicon GPU acceleration (Metal Performance Shaders — "MPS").
+# Install ONLY on macOS arm64; on Linux/x86 pip skips it automatically (no
+# matching wheel) and the DL configs fall back to CPU with identical results.
+#
+# The published DL numbers were trained on this device. With the plugin present
+# TensorFlow registers a GPU:0 PluggableDevice and places ops there with no flag
+# to set; scripts/03_train_deep.py reports the active device at startup and
+# records it in each trial's meta.json, and accepts --device {auto,gpu,cpu}.
+#
+# Measured on an M4 Max (824x30x300 inputs, 60 epochs, per epoch):
+#   Trans     451 ms on Metal vs 2447 ms on CPU   -> 5.4x
+#   JustAttn   82 ms          vs  104 ms          -> 1.3x
+#   LSTMattn  122 ms          vs  129 ms          -> ~1.0x
+#   LSTM      118 ms          vs  103 ms          -> CPU marginally ahead
+# The LSTM family is bound by per-epoch overhead (824 rows / batch 1024 = one
+# batch per epoch), not by arithmetic, so no backend accelerates it.
 tensorflow-metal==1.2.0 ; platform_system == "Darwin" and platform_machine == "arm64"
 
 # Inference + paper artifacts
 pymupdf>=1.23      # PDF layout assertions in tests
 python-pptx>=0.6   # static deck builder
 plotly>=5.18       # interactive deck builder
+
+# Tests (leak audit, embedding equivalence proof)
+pytest>=7.0
 
 # Notebook (optional)
 jupyter>=1.0

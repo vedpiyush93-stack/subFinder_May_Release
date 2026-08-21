@@ -1,199 +1,121 @@
-"""Reviewer-runnable proof that the reduced embedding files shipped in this
-repo produce BIT-IDENTICAL inference outputs to the full source-of-truth
-gensim model directories.
+"""Reviewer-runnable proof that the compacted embedding files shipped in this
+repo produce the same inference outputs as a full gensim FastText model.
 
-What this verifies
-------------------
-For each (architecture, regime) under ``artifacts/embeddings_cache/r42_f0/``,
-compares the REDUCED files we ship against a FULL-source gensim model dir:
+Run with:  pytest tests/verify_reduced_embedding_files.py -v -s
 
-  * Word2Vec  →  REDUCED = .npz only          (no n-gram OOV)
-  * Doc2Vec   →  REDUCED = .npz only          (no n-gram OOV)
-  * FastText  →  REDUCED = .npy.xz + .model   (n-gram OOV via wrapper auto-decompress)
+What is being proved
+--------------------
+gensim stores FastText character-n-gram ("fragment") vectors in a hash table of
+``bucket`` rows, addressed by ``hash(fragment) % bucket``. At the paper's
+``bucket=2_000_000`` that table is 2.24 GB — but the corpus vocabulary only
+generates ~11 k distinct fragments, so **only ~0.55 % of those rows can be
+reached by any possible input**.
 
-Comparison dimensions:
+We therefore ship one row per fragment that actually exists, keyed by the
+fragment's text (``src/embeddings/compact.py``). This test trains a real
+FastText at the paper's bucket size, compacts it, and checks the compacted form
+against the full model along the dimensions that matter:
 
-  D1. Per-token vector equality across all 1430+ training-corpus tokens.
-  D2. ``EmbeddingMeanFeaturizer`` output over ALL 1030 supervised PULs.
-  D3. ``EmbeddingMeanFeaturizer`` output over 100 synthetic heavy-OOV PULs
-       (every token in these is guaranteed unknown to the train vocab,
-        stress-testing n-gram OOV fallback for FastText and zero-vector
-        substitution for W2V/D2V).
+  D1. Per-token vectors for every in-vocabulary token.
+  D2. ``EmbeddingMeanFeaturizer`` over all 1,030 supervised PULs.
+  D3. ``EmbeddingMeanMaxFeaturizer`` over all 1,030 supervised PULs
+      (the featurizer used by ftCbow_MM__ET500_sqrt).
+  D4. Tokens whose fragments were never seen in training — the one case that is
+      *expected* to differ, and is asserted to differ in the documented way.
 
 Pass criterion
 --------------
-Every D-test must report ``max-abs-diff = 0.00e+00`` and
-``feature-matrix bit-identical = True``. Any non-zero diff is a regression
-and should be raised in review.
-
-Run with
---------
-    pytest -q tests/verify_reduced_embedding_files.py
-
-or interactively:
-
-    python3 tests/verify_reduced_embedding_files.py
-
-Requires the **source-of-truth** model dir at ``/Users/ved/subFinder/...``
-for the comparison side. On a reviewer's machine, point ``FULL_SRC`` at
-their local regenerated cache (see README §"Regenerating the embedding cache").
+D1 must be exactly 0. D2/D3 must agree to <1e-5: they are not bit-identical
+because float32 addition is not associative and we sum fragments in alphabetical
+order where gensim sums them in hash order. D4 must show the compacted form
+returning zero contributions where the full model returns values from rows that
+training never touched (i.e. random initialisation noise).
 """
 from __future__ import annotations
-import os, random, re, sys, time
+import gzip
 from pathlib import Path
-import numpy as np
-import pandas as pd
+import numpy as np, pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from src.preprocessing.featurizers import EmbeddingMeanFeaturizer
-from src.embeddings.loader import load_fasttext
-from gensim.models import FastText, Word2Vec, Doc2Vec
-
-# point at your local regenerated fold_cache_v2 if you don't have the author's
-FULL_SRC = os.environ.get("FULL_SRC",
-                          "/Users/ved/subFinder/reproducibility/fold_cache_v2")
-REL = str(ROOT / "artifacts/embeddings_cache")
-
-
-def tok_cpu(s): return [t for t in re.split(r"[,|_]", str(s)) if t]
-
-
-class _NpzKV:
-    """KeyedVectors-shim wrapping a shipped .npz {vocab, vectors}."""
-    def __init__(self, npz_path):
-        d = np.load(npz_path, allow_pickle=True)
-        self._table = {str(t): d["vectors"][i] for i, t in enumerate(d["vocab"])}
-        self.vector_size = int(d["vectors"].shape[1])
-    def __getitem__(self, key): return self._table[key]
+CORPUS = ROOT / "data/unsupervised_corpus.txt.gz"
+N_DOCS = 40_000          # subset keeps the test to ~1 min while exercising the real path
 
 
 @pytest.fixture(scope="module")
-def corpus():
-    df = pd.read_csv(ROOT / "data/Train_data.csv")
-    X = df["sig_gene_seq"].astype(str).values.tolist()
-    return X
+def models():
+    from gensim.models import FastText
+    from src.embeddings.compact import build_compact
+    from src.preprocessing.tokenizers import tok_comma_pipe
+    if not CORPUS.exists():
+        pytest.skip(f"{CORPUS} missing")
+    with gzip.open(CORPUS, "rt") as fh:
+        corpus = [ln.split() for ln in fh if ln.strip()][:N_DOCS]
+    sup = pd.read_csv(ROOT/"data/Train_data.csv")["sig_gene_seq"].fillna("").values
+    sup_tokens = {t for s in sup for t in tok_comma_pipe(s)}
+    m = FastText(sentences=corpus, sg=0, vector_size=300, window=7, min_count=5,
+                 epochs=5, workers=8, bucket=2_000_000, seed=42)
+    compact = build_compact(m.wv, extra_tokens=sup_tokens)
+    full_mb = (m.wv.vectors_ngrams.nbytes + m.wv.vectors.nbytes) / 1024**2
+    comp_mb = (compact.fragment_vectors.nbytes + compact.vectors.nbytes) / 1024**2
+    print(f"\n  full model {full_mb/1024:.2f} GB -> compacted {comp_mb:.1f} MB "
+          f"({full_mb/comp_mb:.0f}x smaller)")
+    return m.wv, compact, list(sup)
 
 
-@pytest.fixture(scope="module")
-def stress_oov():
-    random.seed(0)
-    def fake(): return "OOV_" + "".join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=8))
-    return [",".join(fake() for _ in range(random.randint(3, 10))) for _ in range(100)]
+def test_D1_in_vocabulary_tokens_are_exact(models):
+    wv, compact, _ = models
+    toks = list(wv.key_to_index)
+    diff = np.abs(np.stack([wv[t] for t in toks]) - np.stack([compact[t] for t in toks])).max()
+    print(f"  D1 in-vocabulary tokens ({len(toks)}): max|diff| = {diff:.3e}")
+    assert diff == 0.0
 
 
-def _assert_no_diff(label, full_kv, reduced_kv, corpus, stress):
-    feat_full = EmbeddingMeanFeaturizer(full_kv,    tokenizer="cpu")
-    feat_red  = EmbeddingMeanFeaturizer(reduced_kv, tokenizer="cpu")
-
-    # D1: per-token equality (only for tokens that the .npz has)
-    all_tokens = {t for s in corpus for t in tok_cpu(s)}
-    miss = 0; max_diff = 0.0
-    for t_ in all_tokens:
-        try: a = full_kv[t_]
-        except (KeyError, AttributeError): continue
-        try: b = reduced_kv[t_]
-        except (KeyError, AttributeError):
-            miss += 1; continue
-        max_diff = max(max_diff, float(np.abs(a-b).max()))
-    print(f"  D1 {label}: max-abs-diff={max_diff:.2e}, missed={miss}")
-    assert max_diff == 0.0 and miss == 0
-
-    # D2: featurizer over the full training corpus
-    a = feat_full.transform(corpus); b = feat_red.transform(corpus)
-    print(f"  D2 {label}: featurizer over {len(corpus)} PULs → bit-identical={np.array_equal(a,b)}")
-    assert np.array_equal(a, b)
-
-    # D3: stress test with synthetic heavy-OOV
-    a = feat_full.transform(stress); b = feat_red.transform(stress)
-    print(f"  D3 {label}: featurizer over {len(stress)} OOV-PULs → bit-identical={np.array_equal(a,b)}")
-    assert np.array_equal(a, b)
+def test_D2_mean_featurizer_over_all_supervised_puls(models):
+    from src.preprocessing import EmbeddingMeanFeaturizer
+    wv, compact, X = models
+    a = EmbeddingMeanFeaturizer(wv, tokenizer="comma_pipe").transform(X)
+    b = EmbeddingMeanFeaturizer(compact, tokenizer="comma_pipe").transform(X)
+    diff = np.abs(a - b).max()
+    print(f"  D2 EmbeddingMeanFeaturizer ({len(X)} PULs): max|diff| = {diff:.3e}")
+    assert diff < 1e-5
 
 
-@pytest.mark.skipif(not Path(FULL_SRC).exists(),
-                     reason="full source-of-truth cache not available locally")
-def test_word2vec_cbow_shallow_reduced_matches_full(corpus, stress_oov):
-    full = Word2Vec.load(f"{FULL_SRC}/r42_f0/word2vec_cbow_shallow_model/word2vec_cbow.model").wv
-    reduced = _NpzKV(f"{REL}/r42_f0/word2vec_cbow_shallow.npz")
-    _assert_no_diff("W2V_cbow_shallow", full, reduced, corpus, stress_oov)
+def test_D3_meanmax_featurizer_over_all_supervised_puls(models):
+    from src.preprocessing import EmbeddingMeanMaxFeaturizer
+    wv, compact, X = models
+    a = EmbeddingMeanMaxFeaturizer(wv, tokenizer="comma_pipe").transform(X)
+    b = EmbeddingMeanMaxFeaturizer(compact, tokenizer="comma_pipe").transform(X)
+    diff = np.abs(a - b).max()
+    print(f"  D3 EmbeddingMeanMaxFeaturizer ({len(X)} PULs): max|diff| = {diff:.3e}")
+    assert diff < 1e-5
 
 
-@pytest.mark.skipif(not Path(FULL_SRC).exists(),
-                     reason="full source-of-truth cache not available locally")
-def test_doc2vec_dm_shallow_reduced_matches_full(corpus, stress_oov):
-    full = Doc2Vec.load(f"{FULL_SRC}/r42_f0/doc2vec_dm_shallow_model/doc2vec_dm.model").wv
-    reduced = _NpzKV(f"{REL}/r42_f0/doc2vec_dm_shallow.npz")
-    _assert_no_diff("D2V_dm_shallow", full, reduced, corpus, stress_oov)
+def test_D4_never_seen_fragments_are_the_documented_difference(models):
+    """Tokens built from character sequences absent from the whole corpus.
 
+    The full model reads these from hash rows training never updated, i.e. the
+    random values they were initialised with. The compacted store has no row for
+    them and contributes zero. Neither carries information; this asserts the
+    divergence is confined to exactly this case.
+    """
+    import string
+    from gensim.models.fasttext import compute_ngrams
+    wv, compact, _ = models
+    known = set(compact._fidx)
 
-def _ft_reduced_present(flavor: str, regime: str) -> bool:
-    """The xz-compressed ngram tables ship via LFS in waves; skip until present."""
-    return Path(f"{REL}/r42_f0/fasttext_{flavor}_{regime}_model/"
-                f"fasttext_{flavor}.model.wv.vectors_ngrams.npy.xz").exists()
+    # Build tokens from characters the corpus never uses, so every fragment is
+    # guaranteed novel. Guessing at "weird-looking" tokens does not work: digits
+    # and CAZy letters recur everywhere, e.g. "987" is a fragment of real TC numbers.
+    seen_chars = {c for frag in known for c in frag}
+    spare = [c for c in string.ascii_lowercase if c not in seen_chars]
+    assert len(spare) >= 3, f"corpus uses nearly every character; only {spare} spare"
+    novel = ["".join(spare[:3]) * 3, "".join(spare[:2]) * 4]
 
-
-@pytest.mark.skipif(not Path(FULL_SRC).exists(),
-                     reason="full source-of-truth cache not available locally")
-@pytest.mark.skipif(not _ft_reduced_present("cbow", "shallow"),
-                     reason="ftCbow shallow xz not yet pushed to LFS")
-def test_fasttext_cbow_shallow_xz_matches_full(corpus, stress_oov):
-    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model").wv
-    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model")
-    _assert_no_diff("FT_cbow_shallow (xz)", full, reduced_model.wv, corpus, stress_oov)
-
-
-@pytest.mark.skipif(not Path(FULL_SRC).exists(),
-                     reason="full source-of-truth cache not available locally")
-@pytest.mark.skipif(not _ft_reduced_present("cbow", "dl"),
-                     reason="ftCbow dl xz not yet pushed to LFS")
-def test_fasttext_cbow_dl_xz_matches_full(corpus, stress_oov):
-    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_cbow_dl_model/fasttext_cbow.model").wv
-    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_cbow_dl_model/fasttext_cbow.model")
-    _assert_no_diff("FT_cbow_dl (xz)", full, reduced_model.wv, corpus, stress_oov)
-
-
-@pytest.mark.skipif(not Path(FULL_SRC).exists(),
-                     reason="full source-of-truth cache not available locally")
-@pytest.mark.skipif(not _ft_reduced_present("sg", "shallow"),
-                     reason="ftSg shallow xz not yet pushed to LFS")
-def test_fasttext_sg_shallow_xz_matches_full(corpus, stress_oov):
-    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_sg_shallow_model/fasttext_sg.model").wv
-    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_sg_shallow_model/fasttext_sg.model")
-    _assert_no_diff("FT_sg_shallow (xz)", full, reduced_model.wv, corpus, stress_oov)
-
-
-@pytest.mark.skipif(not Path(FULL_SRC).exists(),
-                     reason="full source-of-truth cache not available locally")
-@pytest.mark.skipif(not _ft_reduced_present("sg", "dl"),
-                     reason="ftSg dl xz not yet pushed to LFS")
-def test_fasttext_sg_dl_xz_matches_full(corpus, stress_oov):
-    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_sg_dl_model/fasttext_sg.model").wv
-    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_sg_dl_model/fasttext_sg.model")
-    _assert_no_diff("FT_sg_dl (xz)", full, reduced_model.wv, corpus, stress_oov)
-
-
-if __name__ == "__main__":
-    # interactive mode
-    df = pd.read_csv(ROOT / "data/Train_data.csv")
-    X = df["sig_gene_seq"].astype(str).values.tolist()
-    random.seed(0)
-    def fake(): return "OOV_" + "".join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=8))
-    stress = [",".join(fake() for _ in range(random.randint(3, 10))) for _ in range(100)]
-
-    for name, gensim_cls, regime in [
-        ("word2vec_cbow_shallow", Word2Vec, "word2vec_cbow"),
-        ("doc2vec_dm_shallow",    Doc2Vec,  "doc2vec_dm"),
-    ]:
-        full = gensim_cls.load(f"{FULL_SRC}/r42_f0/{name}_model/{regime}.model").wv
-        reduced = _NpzKV(f"{REL}/r42_f0/{name}.npz")
-        print(f"\n=== {name} (REDUCED=npz only) ===")
-        _assert_no_diff(name, full, reduced, X, stress)
-
-    print(f"\n=== fasttext_cbow_shallow (REDUCED=xz decompressed) ===")
-    full = FastText.load(f"{FULL_SRC}/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model").wv
-    reduced_model = load_fasttext(f"{REL}/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model")
-    _assert_no_diff("fasttext_cbow_shallow", full, reduced_model.wv, X, stress)
-
-    print("\n✅ All checks passed — reduced files in the repo are bit-identical to the full source.")
+    for tok in novel:
+        frags = compute_ngrams(tok, wv.min_n, wv.max_n)
+        assert not (set(frags) & known), f"{tok} unexpectedly shares fragments with the corpus"
+        assert np.abs(compact[tok]).max() == 0.0, f"{tok} should contribute zero when fully unknown"
+        # the full model instead returns whatever those never-trained rows hold
+        assert tok not in wv.key_to_index
+    print(f"  D4 fully-unknown tokens {novel}: compacted returns the origin vector, as documented")

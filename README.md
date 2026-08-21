@@ -61,11 +61,11 @@ All committed scripts/JSONs live in [`unravel/filtering/`](unravel/filtering/) f
 
 ## How the pipeline works (1 minute)
 
-There is **one** model: `cpu__ET500_log2`. Picked out of 29 candidates, calibrated, and deployed — all using the same 5×5 RSKF splits, so the calibrated probabilities, the deployed model, and the per-PUL signature genes describe the *same single fitted classifier* at different stages.
+There is **one** model: `cpu__ET500_log2`. Picked out of 25 candidates, calibrated, and deployed — all using the same 5×5 RSKF splits, so the calibrated probabilities, the deployed model, and the per-PUL signature genes describe the *same single fitted classifier* at different stages.
 
 ```mermaid
 flowchart TD
-    A[29 candidate configs] --> B["5×5 RSKF benchmark<br/>725 fits × 5 reproducibility reps"]
+    A[25 candidate configs] --> B["5×5 RSKF benchmark<br/>625 fits"]
     B --> C["<b>winner: cpu__ET500_log2</b><br/>0.9066 ± 0.0174 (rep_1, n=25 trials)<br/>0.9063 ± 0.0006 across 5 reps"]
     C --> D["temperature scaling<br/>(inner-OOF on outer_tr — leak-free)<br/>mean T ≈ 0.70"]
     D --> E["<b>artifacts/final_model.pkl</b><br/>calibrated cpu__ET500_log2"]
@@ -166,15 +166,25 @@ To verify the deployed model itself: `python3 scripts/06_inference.py --seq "GH1
 
 ## Path C — Retrain or extend
 
-Everything you need (725 per-trial weights, all embedding vectors, FastText n-gram tables) is already in the cloned repo — no extra downloads.
+Everything you need (625 per-trial weights, all six embeddings, the unsupervised training corpus) is already in the cloned repo — no extra downloads, no Git LFS fetch for embeddings.
 
 ### C.1 — Leakage audit (5 s)
 
 ```bash
 pytest tests/leak_audit.py -v
 # asserts outer_test ∩ outer_train = ∅ for every (seed, fold) split
-# asserts every cached embedding excludes outer_test from its training rows
+# asserts the embeddings are global and label-free: one model per architecture,
+#   trained only on the unsupervised corpus, with no per-fold variants
+# asserts a PUL featurizes identically regardless of which fold it lands in
 ```
+
+Until May 2026 embeddings were trained per fold, and this audit asserted that a
+fold's embedding never saw its own test rows. That assertion passed but did not
+mean what it looked like: each fold's corpus was the unsupervised corpus **plus**
+~824 supervised training rows, and all 1,030 supervised PULs already occur
+verbatim inside the unsupervised corpus (1030/1030 exact sequence matches). The
+current guarantee is stronger — the embeddings never see a supervised row or a
+label at all.
 
 ### C.2 — Retrain the winning model (10 min, no embeddings)
 
@@ -186,27 +196,59 @@ python3 scripts/05_calibrate_best.py
 python3 scripts/04_benchmark.py
 ```
 
-### C.3 — Retrain any embedding-using config (30 min – 6 h)
+### C.3 — Retrain any embedding-using config
 
-The shipped `.npz` (vocab+vectors) covers retraining downstream classifiers; the LFS `.xz` covers FastText n-gram OOV at inference. You only need to regenerate from raw if you want to **rebuild embeddings from scratch** with a different unsupervised corpus.
+The six shipped embeddings cover everything downstream. Rebuilding them from the
+corpus takes ~21 minutes, not the ~8 hours the per-fold scheme needed.
 
 ```bash
-python3 scripts/02_train_shallow.py --retrain          # ~30 min, all 9 shallow configs
-python3 scripts/03_train_deep.py    --retrain          # ~6 h on M4 Max, 20 deep configs
-python3 scripts/01_train_embeddings.py --retrain       # only if rebuilding embeddings from raw (~6 h)
+python3 scripts/02_train_shallow.py --retrain          # ~20 min, all 9 shallow configs
+python3 scripts/03_train_deep.py    --retrain          # ~2.5 h on M4 Max, 16 deep configs
+python3 scripts/01_train_embeddings.py --retrain       # ~21 min, rebuilds all six embeddings
 ```
 
-### C.4 — Use FastText n-gram OOV from Python
+**Compute device.** The deep configs use the Apple Metal (MPS) GPU backend when
+`tensorflow-metal` is installed — `03_train_deep.py` prints the active device at
+startup and records it in every trial's `meta.json`, and takes
+`--device {auto,gpu,cpu}`. Measured per epoch on an M4 Max: `Trans` 451 ms on
+Metal vs 2447 ms on CPU (5.4×); `JustAttn` 1.3×; the LSTM family is bound by
+per-epoch overhead (824 rows / batch 1024 = one batch per epoch) rather than
+arithmetic, so it sees no GPU benefit. Published DL numbers were trained on Metal.
+
+### C.4 — Use the embeddings from Python
 
 ```python
-from src.embeddings.loader import load_fasttext
-m = load_fasttext("artifacts/embeddings_cache/r42_f0/fasttext_cbow_shallow_model/fasttext_cbow.model")
-# auto-decompresses .npy.xz sibling on first load (~6 s); cached for subsequent calls
-v_known = m.wv["GT2"]            # in-vocab → trained vector
-v_oov   = m.wv["GH13_99_NEW"]    # OOV → n-gram-resolved (NOT zero)
+from src.embeddings.loader import load_word_vectors, load_doc2vec
+
+wv = load_word_vectors("fasttext_cbow")     # 14 MB, loads instantly
+v_known = wv["GT2"]                          # in-vocab → trained vector
+v_oov   = wv["GH13_99_NEW"]                  # OOV → resolved from character fragments (NOT zero)
+
+d2v = load_doc2vec("doc2vec_dbow")           # document vectors, not word vectors
+vec = d2v.infer_vector(["GH13", "CBM48", "2.A.1"])
 ```
 
-Vectors are bit-identical to the source uncompressed model — proven by `pytest -q tests/verify_reduced_embedding_files.py`. W2V/D2V don't have n-gram OOV (FastText-specific feature), so for those archs the `.npz` IS the full model.
+**How FastText storage works here.** gensim keeps character-fragment vectors in a
+hash table of `bucket` rows addressed by `hash(fragment) % bucket`. At the paper's
+`bucket=2,000,000` that table is 2.24 GB per model — but the corpus vocabulary
+(1,458 tokens) only generates 11,114 distinct fragments, so **99.45 % of those
+rows cannot be reached by any possible input**. We therefore store one row per
+fragment that actually exists, keyed by the fragment's text, which is both
+collision-free and 180× smaller. Training is unchanged and still runs at the
+paper's bucket size; only storage and lookup differ.
+
+Equivalence is reviewer-runnable: `pytest -q -s tests/verify_reduced_embedding_files.py`
+trains a real FastText, compacts it, and checks in-vocabulary vectors (exactly 0
+difference) and both featurizers over all 1,030 PULs (<1e-5, from float32
+summation order). The one documented divergence is a token whose fragments appear
+nowhere in the corpus: gensim reads those from rows training never touched
+(random initialisation), we contribute zero.
+
+**Doc2Vec uses document vectors.** `infer_vector` runs gradient descent on the new
+document's vector alone (`learn_words=False, learn_hidden=False`), so the trained
+model is never updated by a sample it featurizes. It is stochastic by default —
+`Doc2VecInferFeaturizer` reseeds the model's RNG before each call, which makes
+inference bitwise reproducible.
 
 ---
 
@@ -214,19 +256,19 @@ Vectors are bit-identical to the source uncompressed model — proven by `pytest
 
 ```
 subFinder_May_Release/
-├── data/                    1,030 labeled PULs + curated CAZy↔substrate DB
+├── data/                    1,030 labeled PULs + curated CAZy↔substrate DB + unsupervised corpus (359,763 PULs, 5.7 MB gz)
 ├── src/                     library (preprocessing, embeddings, shallow, deep, calibration, ablation, inference)
 ├── scripts/                 12 CLI drivers (01_train_embeddings → 12_build_per_pul_report)
 ├── notebooks/               build_paper_artifacts.ipynb (master end-to-end feeder)
 ├── artifacts/
-│   ├── predictions/         29 configs × 25 trials × {probs_test.npz, probs_train.npz, classifier.*, meta.json}
+│   ├── predictions/         25 configs × 25 trials × {probs_test.npz, probs_train.npz, classifier.*, meta.json}
 │   ├── calibration/         per-fold T + 4-method comparison
 │   ├── ablation/            leave-one-token-out Δ-prob (argmax + TRUE, raw + calibrated)
-│   ├── embeddings_cache/    .npz vectors (regular git) + FastText .npy.xz n-gram tables (LFS)
-│   ├── leaderboard.csv      29-row sorted leaderboard
-│   ├── per_fold_metrics.csv 725-row per-trial CSV
+│   ├── embeddings/          6 global embeddings, ~38 MB total, regular git (no LFS)
+│   ├── leaderboard.csv      25-row sorted leaderboard
+│   ├── per_fold_metrics.csv 625-row per-trial CSV
 │   └── final_model.pkl      deployed calibrated model (LFS)
-├── reproducibility/         5 model-init reproducibility reps (per-rep predictions + per_fold_metrics)
+├── reproducibility/         model-init reproducibility harness (see the cross-rep note below)
 ├── paper/                   PDFs + 12 source tables + audit_output.txt
 ├── docs/                    deck.pptx + deck.html + figures/ + tables/
 └── tests/                   leak_audit.py + verify_reduced_embedding_files.py
@@ -329,14 +371,17 @@ Reproduce the drift experiment: `python3 scripts/experiments/measure_t_drift.py 
 </details>
 
 <details>
-<summary><b>LFS file inventory (826 files, ~187 GB total)</b></summary>
+<summary><b>LFS file inventory</b></summary>
 
 | Family | Count | Size each | What it is |
 |---|---:|---:|---|
-| `artifacts/embeddings_cache/r*_f*/fasttext_*_model/*.npy.xz` | 100 | ~1.86 GB | xz-compressed FastText n-gram bucket tables (4 flavors × 25 folds). Auto-decompressed by `src/embeddings/loader.py:load_fasttext()`. |
-| `artifacts/predictions/*/r*_f*/classifier.{joblib,keras}` | 725 | 1–45 MB | per-trial classifier weights |
+| `artifacts/predictions/*/r*_f*/classifier.{joblib,keras}` | 625 | 1–45 MB | per-trial classifier weights |
 | `reproducibility/rep_*/predictions/.../classifier.{joblib,keras}` | per rep | same | per-rep classifier weights |
 | `artifacts/final_model.pkl` + `reproducibility/{rep_*,inference}/final_model.pkl` | 1 each | ~180 MB | calibrated deployed model |
+
+The 100 FastText n-gram tables that used to dominate this list (~186 GB) are gone:
+the six embeddings now ship as ~38 MB of ordinary git files in `artifacts/embeddings/`.
+See §C.4 for why the 2.24 GB hash table was 99.45 % unreachable.
 
 **Optional Drive mirror** (`.zip` snapshots, useful only if you can't use LFS): [link](https://drive.google.com/drive/folders/1UkVjswMtFwk5AE-VBeRFMJA7Wn56p39P?usp=sharing).
 

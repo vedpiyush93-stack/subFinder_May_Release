@@ -197,7 +197,7 @@ fig1.add_vline(x=0.9058, line=dict(color=SAGE, width=1.5, dash="dot"))
 # Force y-axis to use our sorted order (Plotly otherwise orders by trace insertion).
 # agg is sorted ascending → first label is lowest accuracy → goes to BOTTOM of plot → best at TOP.
 fig1.update_layout(
-    title=dict(text="<b>Benchmark leaderboard — 29 configurations · 5×5 RSKF · n=25 trials each</b><br>"
+    title=dict(text="<b>Benchmark leaderboard — 25 configurations · 5×5 RSKF · n=25 trials each</b><br>"
                     "<span style='font-size:13px;color:black'><b>Sorted best-on-top.</b> Hover any bar for the full distribution. Click legend entries to filter by family.</span>",
                x=0, font=PLOTLY_TITLE_FONT),
     xaxis=dict(title=dict(text="<b>Mean test accuracy ± 1 SD</b>", font=PLOTLY_AXIS_FONT),
@@ -256,7 +256,7 @@ fig1b.add_trace(go.Bar(
     showlegend=False,
 ))
 fig1b.update_layout(
-    title=dict(text="<b>Top-5 podium — best five of 29 benchmarked configurations</b><br>"
+    title=dict(text="<b>Top-5 podium — best five of 25 benchmarked configurations</b><br>"
                     "<span style='font-size:13px;color:black'><b>Both #1 and #2 share OvR(ExtraTrees)</b> under different featurizers — "
                     "the win is in the classifier choice. Ranks #3–#5 are paper's Balanced RF baseline with different word-embedding featurizers.</span>",
                x=0, font=PLOTLY_TITLE_FONT),
@@ -359,7 +359,7 @@ complete_retrain = set(ret_counts[ret_counts == 25].index)
 incomplete = set(df_retr.shorthand.unique()) - complete_retrain
 missing_in_retrain = set(orig.shorthand.unique()) - set(df_retr.shorthand.unique())
 print(f"  reproducibility data: {len(orig)} orig rows, {len(df_retr)} retrained rows")
-print(f"  configs with FULL 25-trial retrain: {len(complete_retrain)}/29")
+print(f"  configs with FULL 25-trial retrain: {len(complete_retrain)}/25")
 if incomplete: print(f"  partial retrain (excluded): {sorted(incomplete)}")
 if missing_in_retrain: print(f"  no retrain at all (excluded): {sorted(missing_in_retrain)}")
 df_retr = df_retr[df_retr.shorthand.isin(complete_retrain)]
@@ -1037,7 +1037,7 @@ fig10.update_layout(
 )
 
 # ============================================================================
-# CHART 14 — Cross-rep stability forest plot (5 reps × 29 configs)
+# CHART 14 — Cross-rep stability forest plot (5 reps × 25 configs)
 # ============================================================================
 print("[chart 14] cross-rep stability forest plot ...")
 xrep_csv = PRES / "tables/tab_cross_rep_stability.csv"
@@ -1373,25 +1373,25 @@ slide_html_blocks.append({
 # Slide 3 — Scope
 slide_html_blocks.append({
     "title": "Benchmark scope",
-    "subtitle": "29 configurations = (3 featurizer families × classifier swap) + (4 DL architectures × 5 embeddings)",
+    "subtitle": "25 configurations = (3 featurizer families × classifier swap) + (4 DL architectures × 4 embeddings)",
     "body": """
 <dl class="kv">
   <dt>Featurizers (3)</dt><dd>CountVectorizer (paper's tok_comma_pipe), CountVectorizer (tok_cpu — also splits on underscore), FastText mean+max-concat (gensim ft.wv[t] with n-gram OOV)</dd>
   <dt>Embeddings retrained per fold (6)</dt><dd>FastText cbow/sg, Word2Vec cbow/sg, Doc2Vec dm/dbow — leak-free (test tokens never enter embedding training)</dd>
   <dt>Classifiers</dt><dd>OvR(BalancedRF n=100) baseline; OvR(ExtraTrees n=500 log2/sqrt) ours; 4 DL architectures from paper (LSTM, LSTM+attention, just-attention, transformer)</dd>
   <dt>Hyperparameters</dt><dd>Paper-verbatim for shallow + DL except batch (DL_BATCH=1024, Transformer=4096 for M4 Max throughput); EarlyStopping patience=30, validation 25%, Adam 1e-4</dd>
-  <dt>Total</dt><dd>29 configs × 25 trials = 725 fits; bit-identical reproducibility on our sklearn winners</dd>
+  <dt>Total</dt><dd>25 configs × 25 trials = 725 fits; bit-identical reproducibility on our sklearn winners</dd>
 </dl>
 """
 })
 
 # Slide 4 — Leaderboard
 slide_html_blocks.append({
-    "title": "Benchmark leaderboard — 29 configurations",
+    "title": "Benchmark leaderboard — 25 configurations",
     "subtitle": "Mean test accuracy ± 1 SD across the full 5×5 RSKF grid (n=25 trials per config). Best on top.",
     "body": fig_html(fig1, "chart-leaderboard") + callout(
         "HOW TO READ",
-        "Each row is one of 29 configurations (featurizer → classifier). Bars are sorted descending so the "
+        "Each row is one of 25 configurations (featurizer → classifier). Bars are sorted descending so the "
         "strongest configs sit at the top. <b>Green</b> = our shallow winners; <b>navy</b> = paper's Balanced RF "
         "baselines; <b>orange</b> = paper's deep architectures. Hover any bar for full distribution stats; "
         "click the legend to filter by family."
@@ -1637,7 +1637,7 @@ slide_html_blocks.append({
 
 # --- Appendix slides: full leaderboard + per-featurizer agg + per-classifier agg ---
 
-# Full 29-config table HTML
+# Full 25-config table HTML
 lb_html = ('<table class="data-table lb"><thead><tr>'
            '<th>rank</th><th>config (shorthand)</th>'
            '<th>featurizer family</th><th>featurizer detail</th>'
@@ -1681,7 +1681,7 @@ for _, r in clf_agg.iterrows():
 clf_html += "</tbody></table>"
 
 slide_html_blocks.append({
-    "title": "Appendix · Full 29-config leaderboard with decoded featurizer + classifier",
+    "title": "Appendix · Full 25-config leaderboard with decoded featurizer + classifier",
     "subtitle": "Every config benchmarked. Rank 1 highlighted gold; ranks 2–3 highlighted pale gold.",
     "body": lb_html,
 })

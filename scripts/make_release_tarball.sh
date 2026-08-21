@@ -3,8 +3,7 @@
 # tarballs; all heavy artifacts now ship in the repo itself:
 #   * artifacts/final_model.pkl  → Git LFS, auto-fetched on git clone
 #   * artifacts/predictions/*/r*_f*/classifier.{joblib,keras} → regular git
-#   * artifacts/embeddings_cache/r*_f*/*.npz → regular git
-#   * artifacts/embeddings_cache/r*_f*/fasttext_*_model/*.npy.xz → Git LFS
+#   * artifacts/embeddings/*.npz + *.model → regular git (~38 MB total)
 # A single ``git clone`` (with ``git lfs install`` set up once) gives the
 # reviewer everything below. This script is retained only as the canonical
 # recipe for regenerating the Drive-mirror tarballs if needed.
@@ -47,7 +46,7 @@ tar -czf "$RELEASE_DIR/subfinder_final_model.tar.gz" \
 
 echo "[release] Building embeddings-cache tarball (this is the big one) ..."
 # Follow symlink for the embeddings cache (-h)
-tar -czhf "$RELEASE_DIR/subfinder_embeddings.tar.gz" artifacts/embeddings_cache/
+tar -czhf "$RELEASE_DIR/subfinder_embeddings.tar.gz" artifacts/embeddings/
 
 echo ""
 echo "[release] Tarballs built. Sizes + SHA-256 (paste these into README §5):"

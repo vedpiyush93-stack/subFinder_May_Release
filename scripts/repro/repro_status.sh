@@ -17,10 +17,10 @@ CONFIGS=(
   cpu__ET500_log2 ftCbow_MM__ET500_sqrt cv__BRF100
   ftCbow__BRF100 ftSg__BRF100 w2vCbow__BRF100 w2vSg__BRF100
   d2vDm__BRF100 d2vDbow__BRF100
-  ftCbow__LSTM   ftSg__LSTM   w2vCbow__LSTM   w2vSg__LSTM   d2vDm__LSTM
-  ftCbow__LSTMattn ftSg__LSTMattn w2vCbow__LSTMattn w2vSg__LSTMattn d2vDm__LSTMattn
-  ftCbow__JustAttn ftSg__JustAttn w2vCbow__JustAttn w2vSg__JustAttn d2vDm__JustAttn
-  ftCbow__Trans  ftSg__Trans  w2vCbow__Trans  w2vSg__Trans  d2vDm__Trans
+  ftCbow__LSTM   ftSg__LSTM   w2vCbow__LSTM   w2vSg__LSTM
+  ftCbow__LSTMattn ftSg__LSTMattn w2vCbow__LSTMattn w2vSg__LSTMattn
+  ftCbow__JustAttn ftSg__JustAttn w2vCbow__JustAttn w2vSg__JustAttn
+  ftCbow__Trans  ftSg__Trans  w2vCbow__Trans  w2vSg__Trans
 )
 
 bar() {  # bar <done> <total>
