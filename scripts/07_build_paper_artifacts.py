@@ -39,7 +39,11 @@ def main():
                          "leaderboard, so the headline and every section below it describe "
                          "the same model (this used to be hardcoded to cpu__ET500_log2, "
                          "which silently mixed v1 sections under a v2 headline).")
-    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--seed", type=int, default=43,
+                    help="Outer repeat to report single-split results on. Its 5 folds "
+                         "cover all 1,030 PULs. Must match the repeat used by "
+                         "scripts/07c_build_paper_figures.py so the manuscript describes "
+                         "one coherent set of predictions.")
     ap.add_argument("--K", type=int, default=3, help="Top-K for sig-gene metrics.")
     args = ap.parse_args()
 
@@ -101,7 +105,7 @@ def main():
     per_sub = pd.DataFrame({"substrate": cls, "n_test": sup, "precision": p, "recall": r, "F1": f1}) \
                 .sort_values("F1", ascending=False)
     per_sub.to_csv(ROOT/"docs/tables/per_substrate_metrics.csv", index=False)
-    A("oof_seed42_acc", f"{(y_pred == y).mean():.4f}")
+    A(f"oof_seed{args.seed}_acc", f"{(y_pred == y).mean():.4f}")
 
     # 3. Calibration — load final pickle to get T
     print("[07] Calibration report ...")
@@ -123,7 +127,7 @@ def main():
     # Prefer the v2 ablation when the deployed configuration is the v2 one, and
     # match it with the v2 tokenizer + family-augmented canon so this funnel and
     # scripts/13c_v2_sig_gene_pr.py agree by construction rather than by luck.
-    abl_v2 = ROOT/"artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv"
+    abl_v2 = ROOT/f"artifacts/ablation/sig_gene_ablation_oof_outer{args.seed}_v2.csv"
     use_v2 = top_config.startswith("cpuV2") and abl_v2.exists()
     if use_v2:
         abl_csv = abl_v2

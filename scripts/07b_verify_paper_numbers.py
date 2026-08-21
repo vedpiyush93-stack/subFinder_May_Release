@@ -50,10 +50,11 @@ check("n labelled PULs",        None,  "1{,}030")
 check("n configurations",       None,  str(pfm.shorthand.nunique()))
 check("n runs",                 None,  str(pfm.shorthand.nunique()*25))
 check("sig-gene hit rate",      None,  audit["per_sub_sig_pul_hit_rate"].replace("%","\\%"))
+check("single-repeat accuracy",  None,  audit[[k for k in audit if k.startswith("oof_seed")][0]])
 check("sig-gene numerator",     None,  audit["per_sub_sig_total_hit"])
 check("sig-gene denominator",   None,  "1{,}028")
 check("lit canon pairs",        None,  audit["lit_db_substrate_family_pairs_after_alias_collapse"])
-check("OOF accuracy",           None,  audit["oof_seed42_acc"])
+
 
 for m, e in zip(cal.method, cal.ece_10bin):
     if m in ("uncalibrated", "temperature_scaling"):

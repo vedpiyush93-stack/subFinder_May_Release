@@ -25,7 +25,7 @@ Outputs (paper-table-shaped):
 Usage:  python3 scripts/13c_v2_sig_gene_pr.py
 """
 from __future__ import annotations
-import re, sys, time
+import argparse, os, re, sys, time
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -49,8 +49,17 @@ y = df["high_level_substr"].values
 substrates = sorted(set(y))
 print(f"      {len(X):,} PULs, {len(substrates)} substrates")
 
-print("[13c] running 5-fold v2 OOF ablation (seed-42, true-class attribution) ...")
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+_ap = argparse.ArgumentParser(description="v2 signature-gene ablation + literature PR")
+_ap.add_argument("--split-seed", type=int, default=42,
+                 help="Outer repeat to run. Its 5 folds together cover all 1,030 PULs. "
+                      "Output filenames carry this seed so repeats do not overwrite each other.")
+_args = _ap.parse_args()
+SPLIT_SEED = _args.split_seed
+MODEL_SEED = int(os.environ.get("REPRO_REP_SEED", "42"))
+
+print(f"[13c] running 5-fold v2 OOF ablation (outer repeat seed={SPLIT_SEED}, "
+      f"model seed={MODEL_SEED}, true-class attribution) ...")
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SPLIT_SEED)
 all_rows = []
 t0 = time.time()
 for fold_idx, (tr_idx, te_idx) in enumerate(skf.split(X, y)):
@@ -62,7 +71,7 @@ for fold_idx, (tr_idx, te_idx) in enumerate(skf.split(X, y)):
     inv_vocab = {v: k for k, v in cv.vocabulary_.items()}
     clf = OneVsRestClassifier(ExtraTreesClassifier(
         n_estimators=500, max_features="log2", class_weight="balanced",
-        bootstrap=False, n_jobs=-1, random_state=42))
+        bootstrap=False, n_jobs=-1, random_state=MODEL_SEED))
     clf.fit(Xtr, y[tr_idx])
     classes_list = list(clf.classes_)
     P = clf.predict_proba(Xte)
@@ -104,7 +113,7 @@ for fold_idx, (tr_idx, te_idx) in enumerate(skf.split(X, y)):
     print(f"  fold {fold_idx}: {len(te_idx):,} test PULs ablated in {time.time()-t1:.1f}s")
 
 oof = pd.DataFrame(all_rows)
-ablation_out = ROOT / "artifacts/ablation/sig_gene_ablation_oof_outer42_v2.csv"
+ablation_out = ROOT / f"artifacts/ablation/sig_gene_ablation_oof_outer{SPLIT_SEED}_v2.csv"
 oof.to_csv(ablation_out, index=False)
 print(f"[13c] wrote {ablation_out.relative_to(ROOT)}  ({len(oof):,} rows, {(oof['true']==oof['pred']).sum()} correct)")
 
@@ -188,7 +197,7 @@ for s in substrates:
         "scope_recall_family":   (len(flag_family)/len(inscope_family))     if inscope_family   else 0.0,
     })
 pr_df = pd.DataFrame(rows).sort_values("hit_rate_any", ascending=False)
-pr_out = ROOT / "paper/tables/table12_v2_per_substrate_sig_pr.csv"
+pr_out = ROOT / f"paper/tables/table12_v2_per_substrate_sig_pr_outer{SPLIT_SEED}.csv"
 pr_df.to_csv(pr_out, index=False)
 print(f"[13c] wrote {pr_out.relative_to(ROOT)}")
 
@@ -207,7 +216,7 @@ agg = pd.DataFrame([{
     "scope_recall_specific": pr_df.flagged_specific.sum() / pr_df.in_scope_specific.sum() if pr_df.in_scope_specific.sum() else 0.0,
     "scope_recall_family":   pr_df.flagged_family.sum()   / pr_df.in_scope_family.sum()   if pr_df.in_scope_family.sum()   else 0.0,
 }])
-agg_out = ROOT / "paper/tables/table12_v2_aggregate_sig_pr.csv"
+agg_out = ROOT / f"paper/tables/table12_v2_aggregate_sig_pr_outer{SPLIT_SEED}.csv"
 agg.to_csv(agg_out, index=False)
 print(f"[13c] wrote {agg_out.relative_to(ROOT)}")
 
