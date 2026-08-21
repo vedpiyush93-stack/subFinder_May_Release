@@ -24,41 +24,43 @@ gene_type     transformation on the ``Protein Family`` column
 *(other)*     keep as-is
 ============  ============================================================
 
-TC handling — why ``tc_mode="both"`` by default
-------------------------------------------------
-The training corpus ``data/Train_data.csv`` contains BOTH full 5-part TC
-numbers (e.g. ``1.B.14.12.1``) AND 3-part truncated TC (e.g. ``1.B.14``).
-We measured 177 5-part vs. 52 3-part TC tokens in the training vocab,
-with 41 TC families appearing in BOTH forms (e.g. ``1.B.14`` alongside
-``1.B.14.6.1``, ``1.B.14.12.1``, ``1.B.14.10.1``).
+TC handling — why ``tc_mode="full"`` is the default
+---------------------------------------------------
+The deployed tokenizer ``tok_cpu_v2`` already reads a TC identifier at its
+3-level family, so ``1.B.14.12.1`` and ``1.B.14`` become the same feature no
+matter which form arrives. The reader therefore passes TC annotations through
+untouched and lets the tokenizer do the truncation once.
 
-The legacy parser ``Codes/import_data.py`` truncated TC to 3 parts — which
-silently lost matches with the 5-part half of the training vocab. To
-maximize vocab overlap at inference time, this loader's default is
-``tc_mode="both"`` — emit BOTH forms separated by ``|``:
-
-* ``"1.B.14.12.1"`` → ``"1.B.14.12.1|1.B.14"``
-* ``tok_cpu`` later splits on ``|`` so both columns activate in CountVec.
-* The classifier uses whichever it has weights for.
+An earlier default emitted BOTH forms separated by ``|`` (``"1.B.14.12.1" ->
+"1.B.14.12.1|1.B.14"``). That was correct for the older ``tok_cpu``, which kept
+the full identifier verbatim and so genuinely needed the truncated form spelled
+out to match the training vocabulary's 3-level half. Under ``tok_cpu_v2`` it is
+actively wrong: both halves collapse to ``1.B.14``, and because the featurizer
+counts tokens, every transporter is counted twice. The same locus then produces
+a different feature vector depending on whether it arrived as a token string or
+as a CGC table -- measured at up to 0.251 of probability mass on the deployed
+model. ``tests/verify_input_formats_agree.py`` pins this down.
 
 ``tc_mode`` options
 -------------------
-* ``"both"`` (default): emit both full + 3-part. Recommended.
-* ``"truncate"`` : emit only 3-part. Matches legacy ``import_data.py``.
-* ``"full"``     : emit only the original (no transformation).
+* ``"full"`` (default): pass the TC annotation through unchanged and let
+  ``tok_cpu_v2`` read it at the family level. Predictions then match the
+  token-string path exactly.
+* ``"truncate"`` : emit only the 3-part form. Equivalent under ``tok_cpu_v2``;
+  retained because it matches the legacy ``import_data.py`` convention.
+* ``"both"``     : emit full + 3-part. Only correct for the older ``tok_cpu``;
+  double-counts every transporter under ``tok_cpu_v2``.
 
 This loader does **not** modify the legacy script; it's an inference-only
 convention.
 
 Featurizer gotcha to know
 -------------------------
-``tok_cpu`` from :pyfile:`src/preprocessing/tokenizers.py` splits on three
-characters: ``,``, ``|``, and ``_``. The ``_`` split means that subfamily
-indices like ``GH43_34`` become two tokens ``[GH43, 34]`` after
-tokenization. This applies to both the raw token-string input and the
-CGC-parsed input — the model already learnt that convention at training
-time. As long as the *atomic* output of ``tok_cpu`` matches what the model
-expects, both input paths give identical predictions.
+``tok_cpu_v2`` splits on ``,``, ``|`` and ``_``, so a subfamily index like
+``GH43_34`` becomes ``[GH43, 34]``. That applies equally to the token-string
+input and the CGC-parsed input, and the model learnt the convention at training
+time. What matters is that the *multiset* of tokens matches: because the
+featurizer counts occurrences, emitting a token twice is not harmless.
 """
 from __future__ import annotations
 from collections import defaultdict
@@ -93,14 +95,14 @@ def _parse_line(parts: list[str], tc_mode: str) -> tuple[str, str]:
 
 
 def cgc_to_pul_strings(filepath: str | Path,
-                        tc_mode: str = "both") -> dict[str, str]:
+                        tc_mode: str = "full") -> dict[str, str]:
     """Read a cgc_standard.out file → ``{cgc_id: pul_string}``.
 
     Parameters
     ----------
     filepath : path to a dbCAN cgc_standard.out (tab-separated, 8 cols).
-    tc_mode  : how to render TC numbers — ``"both"`` (default), ``"full"``,
-                or ``"truncate"``. See module docstring.
+    tc_mode  : how to render TC numbers — ``"full"`` (default), ``"truncate"``,
+                or ``"both"``. See module docstring.
 
     Returns
     -------

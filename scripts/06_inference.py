@@ -20,11 +20,13 @@ Input formats supported
      (Contig, CGC#) and applies these transformations per gene_type:
 
          null         → "null"
-         TF / STP     → '+' → '|'   (so tok_cpu splits domains as tokens)
+         TF / STP     → '+' → '|'   (so the tokenizer splits domains apart)
          CAZyme/other → as-is
-         TC           → see --tc-mode (default "both" emits both the full
-                        5-part TC and the 3-part truncation, ``|``-joined,
-                        because the training vocab contains both forms)
+         TC           → as-is by default; tok_cpu_v2 reads it at the 3-level
+                        family, so no pre-truncation is needed. See --tc-mode.
+
+     Both input paths are held to produce identical predictions by
+     tests/verify_input_formats_agree.py.
 
 Output
 ------
@@ -103,9 +105,12 @@ def main():
                     help="Inference on a dbCAN cgc_standard.out (8-col TSV).")
     ap.add_argument("--col", default="sig_gene_seq",
                      help="CSV column with PUL sequences (for --in-csv only).")
-    ap.add_argument("--tc-mode", default="both",
-                     choices=["both", "full", "truncate"],
+    ap.add_argument("--tc-mode", default="full",
+                     choices=["full", "truncate", "both"],
                      help="How to render TC numbers (for --cgc-standard only). "
+                          "Default 'full' leaves them alone; the deployed tokenizer "
+                          "reads them at the family level. 'both' is retained for the "
+                          "older tokenizer and double-counts transporters under this one. "
                           "Default 'both' emits 5-part|3-part for max vocab overlap.")
     ap.add_argument("--model", default=str(ROOT/"artifacts/final_model.pkl"))
     ap.add_argument("--lit",   default=str(ROOT/"data/Literature_Data_fam_substrate_mapping.tsv"))
