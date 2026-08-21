@@ -8,8 +8,6 @@
 
 <br>
 
-[![Paper](https://img.shields.io/badge/paper-PDF-1a3a5c?style=for-the-badge)](paper/main.pdf)
-[![Supplement](https://img.shields.io/badge/supplement-PDF-1a3a5c?style=for-the-badge)](paper/supplement.pdf)
 [![Static Deck](https://img.shields.io/badge/static%20deck-PPTX-7f8c8d?style=for-the-badge)](docs/deck.pptx)
 [![Interactive Deck](https://img.shields.io/badge/interactive%20deck-HTML-e67e22?style=for-the-badge)](docs/deck.html)
 
