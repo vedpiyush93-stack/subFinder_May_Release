@@ -129,9 +129,12 @@ def main():
     macro("HeldOutAcc", f"{acc:.4f}")
 
     import joblib
-    T = joblib.load(ROOT/"artifacts/final_model_v2.pkl")["T"]
-    lg = np.log(np.clip(P, 1e-12, None))/T
-    Pc = np.exp(lg - lg.max(1, keepdims=True)); Pc /= Pc.sum(1, keepdims=True)
+    from src.calibration.temperature import apply_temperature
+    T = float(joblib.load(ROOT/"artifacts/final_model_v2.pkl")["T"])
+    # must be the same transform the deployed model applies (per-class logit / T,
+    # sigmoid, renormalise) -- a softmax-style log(p)/T is a different operation
+    # and would report probabilities no user ever sees.
+    Pc = apply_temperature(P, T)
     macro("DeployT", f"{T:.4f}")
 
     # ============================================================ FIG 2

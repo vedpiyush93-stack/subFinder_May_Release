@@ -76,29 +76,46 @@ def tok_cpu_tc2(s: str) -> list[str]:
 
 
 def tok_cpu_v2(s: str) -> list[str]:
-    """Deployed tokenizer: tok_cpu, with TC numbers read at the 3-level family.
+    """Deployed tokenizer: tok_cpu, TC read at the 3-level family, bare subfamily
+    indices discarded.
 
     Example:
-        "1.B.14.6.1,GH5_4,CBM6|null" -> ["1.B.14", "GH5", "4", "CBM6", "null"]
+        "1.B.14.6.1,GH5_4,CBM6|null" -> ["1.B.14", "GH5", "CBM6", "null"]
 
-    TC identifiers are class.subclass.family.subfamily.protein, so level 3 is the
-    family: "1.B.14" is the Outer Membrane Receptor family, the TonB-dependent
-    SusC-like receptors characteristic of a PUL. Three levels is also the depth
-    the corpus is written at -- 99.9% of the 1,678,991 TC tokens in the
-    unsupervised corpus are already 3-level, while the labelled set mixes 3- and
-    5-level forms -- so reading both at the family level makes "1.B.14.6.1" and
-    "1.B.14" recognisable as the same transporter instead of two unrelated
-    strings.
+    Three rules, on top of splitting on ``,``, ``|`` and ``_``:
 
-    CAZy tokens are left exactly as they are. An earlier variant additionally
-    emitted a family-only companion ("GH13" -> "GH13" plus "GH") to give unseen
-    families something to match on; that is deliberately not done, because it
-    conflates enzymes of very different specificity under one feature -- every
-    GH is counted together regardless of what it acts on.
+    1. **TC identifiers are read at their 3-level family.** These are
+       class.subclass.family.subfamily.protein, so level 3 is the family:
+       "1.B.14" is the Outer Membrane Receptor family, the TonB-dependent
+       SusC-like receptors characteristic of a PUL. It is also the depth the
+       corpus is written at -- 99.9% of the 1,678,991 TC tokens in the
+       unsupervised corpus are already 3-level -- so reading both corpora the
+       same way makes "1.B.14.6.1" and "1.B.14" the same transporter rather
+       than two unrelated strings.
+
+    2. **Bare subfamily indices are dropped.** Splitting on "_" turns "GH5_4"
+       into "GH5" and "4". The family half is the point of the split: it lets
+       every GH5 subfamily contribute to a shared GH5 feature instead of each
+       being a rare isolated token, and removing the split entirely costs 1.2
+       accuracy points (0.9060 vs 0.9183 on 5x5 RSKF). The leftover index is a
+       different matter. It names no enzyme, and it collides: 21 of the 38
+       numeric suffixes in the labelled set appear under more than one parent
+       family, with "1" shared by 19 of them (GH13_1, GH130_1, GH30_1, GH43_1,
+       GH5_1, ...). Keeping it is worth 0.0006 accuracy, inside noise, while
+       putting an uninterpretable token into the top-3 signature genes of 25.9%
+       of loci. We drop it.
+
+    3. **CAZy tokens are otherwise left alone.** No family-only companion is
+       emitted; a bare "GH" would pool a GH13 amylase with a GH10 xylanase, and
+       measured slightly worse besides (0.9163 vs 0.9183).
+
+    ``null`` is kept throughout: an unannotated neighbour is weak evidence in
+    itself and the classifier uses it. It is suppressed only from the displayed
+    signature-gene podium, which is a presentation choice, not a modelling one.
 
     A 2-level TC variant is kept as tok_cpu_tc2 for provenance; it collapses 596
-    distinct transporter families into 26 labels, which is too coarse to carry
-    substrate signal.
+    distinct transporter families into 26 labels, too coarse to carry substrate
+    signal.
     """
     out = []
     for t in _COMMA_PIPE_UNDERSCORE.split(str(s)):
@@ -106,6 +123,8 @@ def tok_cpu_v2(s: str) -> list[str]:
         if _TC_HEAD.match(t):
             parts = t.split(".")
             out.append(".".join(parts[:3]) if len(parts) >= 3 else t)
+            continue
+        if t.isdigit():          # bare subfamily index left by the "_" split
             continue
         out.append(t)
     return out

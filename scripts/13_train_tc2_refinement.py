@@ -94,7 +94,8 @@ print(f"  deployed vocab size: {len(pipe_deploy.named_steps['cv'].vocabulary_)}"
 print("\n[tc2] fitting deployment temperature (inner-CV5 on all rows) ...")
 t2 = time.time()
 T_deploy, _oof_probs = fit_temperature_inner_cv(make_pipe, X, y,
-                                                  n_inner_folds=5, random_state=42)
+                                                  n_inner_folds=5, random_state=42,
+                                                  objective="ece")
 # Second return is OOF probabilities (1030, 12), not per-fold T values.
 # For deployment we only need T_deploy.
 T_per_fold = []
@@ -109,7 +110,7 @@ bundle = {
     "classes": classes,
     "config": "cpu__ET500_log2__v2_refinement",
     "trained_on": "all 1030 rows",
-    "calibration_method": "temperature_scaling_inner_cv5",
+    "calibration_method": "temperature_scaling_inner_cv5_ece_objective",
     "tokenizer": "tok_cpu_v2",
     "refinement_note": (
         "POST-HOC REFINEMENT (May 2026): collapses TC numbers to 2-level family "

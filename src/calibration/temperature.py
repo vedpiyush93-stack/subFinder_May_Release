@@ -6,11 +6,22 @@ protocol is:
     p_T,c     = sigmoid(logit_c / T)   # divide by scalar temperature
     p_T,c    /= sum_c p_T,c            # renormalize across classes
 
-A single scalar ``T`` is fit by minimizing multi-class NLL of the inner-fold
-OOF probabilities. Temperature scaling is monotonic per-class, so it preserves
-the argmax (deployment-safe). Empirically T ≈ 0.70 (sharpens — opposite of
-the canonical DNN overconfidence regime — because OvR-ExtraTrees outputs are
-diffuse rather than peaked).
+A single scalar ``T`` is fit on inner-fold OOF probabilities. Temperature
+scaling is monotonic per-class, so it preserves the argmax and cannot change a
+prediction (verified: identical argmax on 100% of loci for every T we ship).
+
+**Objective matters here.** ``fit_temperature`` minimizes NLL, which is the
+conventional choice. On this model it is the wrong one. OvR-ExtraTrees outputs
+are diffuse rather than peaked, so the model is systematically *under*-confident:
+its observed accuracy exceeds its stated confidence by about 0.15 in every
+repeat. Fixing that requires sharpening, T < 1. But NLL is dominated by the few
+confident mistakes, and sharpening makes those far more expensive, so the NLL
+optimum sits near T ≈ 0.96 and leaves the under-confidence essentially uncorrected
+-- sometimes making 10-bin ECE worse than doing nothing.
+
+``fit_temperature_ece`` optimizes ECE directly instead. Across the five repeats it
+selects T between 0.57 and 0.68 and reduces ECE roughly four-fold (0.057-0.070 to
+0.006-0.017) with predictions bit-identical. That is the objective we deploy.
 
 Use ``CalibratedClassifier`` as a deployment-ready wrapper: it takes a fitted
 sklearn pipeline and a temperature, and exposes a normal ``predict_proba``.
@@ -63,9 +74,37 @@ def fit_temperature(probs: np.ndarray, y_int: np.ndarray,
     return float(res.x)
 
 
+def _ece(probs: np.ndarray, y_int: np.ndarray, n_bins: int = 10) -> float:
+    """Expected calibration error: mean |stated confidence - observed accuracy|,
+    over ``n_bins`` equal-width bins of the winning probability."""
+    conf = probs.max(axis=1)
+    correct = (probs.argmax(axis=1) == y_int)
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    total = 0.0
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = (conf >= lo) & (conf < hi if hi < 1.0 else conf <= hi)
+        if m.sum():
+            total += m.sum() * abs(correct[m].mean() - conf[m].mean())
+    return float(total / len(conf))
+
+
+def fit_temperature_ece(probs: np.ndarray, y_int: np.ndarray,
+                         bounds: tuple = (0.3, 2.0)) -> float:
+    """Find T minimizing 10-bin ECE on (probs, y_int).
+
+    Same leakage rule as ``fit_temperature``: ``probs`` must be out-of-fold.
+    Prefer this over the NLL objective for this model -- see the module
+    docstring for why the two disagree.
+    """
+    res = minimize_scalar(lambda T: _ece(apply_temperature(probs, T), y_int),
+                          bounds=bounds, method="bounded")
+    return float(res.x)
+
+
 def fit_temperature_inner_cv(base_estimator_factory, X, y, n_inner_folds: int = 5,
-                              random_state: int = 42) -> tuple[float, np.ndarray]:
-    """Leak-free temperature fit: inner-CV OOF probs → minimize NLL → return T.
+                              random_state: int = 42,
+                              objective: str = "ece") -> tuple[float, np.ndarray]:
+    """Leak-free temperature fit: inner-CV OOF probs → fit T → return it.
 
     Implements the "fit on inner-CV OOF, deploy on outer-test" protocol used in
     the paper. For each fold of an internal k-fold split:
@@ -79,6 +118,7 @@ def fit_temperature_inner_cv(base_estimator_factory, X, y, n_inner_folds: int = 
         X, y: outer-train data (NOT the test fold).
         n_inner_folds: number of inner CV folds (5 in the paper).
         random_state: passed to inner StratifiedKFold.
+        objective: ``"ece"`` (default, what we deploy) or ``"nll"`` (conventional).
     Returns:
         (T, oof_probs) — fitted temperature and the (n, K) inner-OOF probability
         matrix used to fit it (returned for ECE diagnostics).
@@ -97,7 +137,8 @@ def fit_temperature_inner_cv(base_estimator_factory, X, y, n_inner_folds: int = 
         col = np.array([fold_classes.index(c) for c in cls])
         p_val = m.predict_proba([X[i] for i in inner_val])[:, col]
         oof[inner_val] = p_val
-    T = fit_temperature(oof, y_int)
+    T = (fit_temperature_ece(oof, y_int) if objective == "ece"
+         else fit_temperature(oof, y_int))
     return T, oof
 
 

@@ -144,7 +144,8 @@ def main():
         # ── (A) Temperature scaling, inner-CV protocol (leak-free)
         t_t = time.time()
         T, _oof = fit_temperature_inner_cv(lambda: _make_top_pipe(args.top_config), X[tr_outer], y[tr_outer],
-                                            n_inner_folds=args.n_inner, random_state=args.seed)
+                                            n_inner_folds=args.n_inner, random_state=args.seed,
+                                            objective="ece")
         # LEAK CHECK: confirm test indices were NEVER in the inner CV
         assert len(set(te) & set(tr_outer)) == 0, "outer test ∩ outer train must be empty"
         P_temp[te] = apply_temperature(P_uncal[te], T)
@@ -189,7 +190,7 @@ def main():
     print(f"[05-cal] fitting deployment model on all {N} rows ...")
     t1 = time.time()
     pipe = _make_top_pipe(args.top_config); pipe.fit(X, y)
-    T_deploy, _ = fit_temperature_inner_cv(lambda: _make_top_pipe(args.top_config), X, y,
+    T_deploy, _ = fit_temperature_inner_cv(lambda: _make_top_pipe(args.top_config), X, y, objective="ece",
                                             n_inner_folds=args.n_inner, random_state=args.seed)
     print(f"  deployment T = {T_deploy:.4f}  (inner-CV fit on all rows took {time.time()-t1:.0f}s)")
     with open(args.out, "wb") as f:
