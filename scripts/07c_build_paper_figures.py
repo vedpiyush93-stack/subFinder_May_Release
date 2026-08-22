@@ -473,8 +473,13 @@ def main():
     plt.tight_layout(); plt.savefig(FIG/"figS2_topk.png"); plt.close()
 
     # S3 confidence vs correctness -------------------------------------------
-    bins = [(0, .235), (.235, .5), (.5, .75), (.75, .9), (.9, 1.01)]
-    lab = ["below\nsignificance", "0.24-0.50", "0.50-0.75", "0.75-0.90", "0.90-1.00"]
+    # winner significance uses the Bonferroni-corrected threshold: the winner is
+    # the max of 12 components, so the marginal null is anti-conservative.
+    from scipy.optimize import brentq
+    SIG_TH = brentq(lambda q: 12*(1-q)**11 - 0.05, 1e-6, 0.999)
+    macro("SigThresh", f"{SIG_TH:.3f}")
+    bins = [(0, SIG_TH), (SIG_TH, .6), (.6, .8), (.8, .95), (.95, 1.01)]
+    lab = ["below\nsignificance", f"{SIG_TH:.2f}-0.60", "0.60-0.80", "0.80-0.95", "0.95-1.00"]
     accs, cnts = [], []
     for lo, hi in bins:
         m = (conf_cal >= lo) & (conf_cal < hi)
@@ -521,6 +526,41 @@ def main():
            "loci whose genes the training fold never saw are predicted less reliably")
     plt.tight_layout(); plt.savefig(FIG/"figS4_oov.png"); plt.close()
     macro("ZeroOovN", on[0]); macro("ZeroOovAcc", f"{oacc[0]*100:.0f}")
+
+    # S6 the calibration objective ------------------------------------------
+    from src.calibration.temperature import apply_temperature as _appT, _nll as _NLL
+    yi = np.array([cls.index(v) for v in y])
+    Ts = np.linspace(0.35, 1.6, 60)
+    nll = [_NLL(_appT(P, t), yi) for t in Ts]
+    eces = []
+    for t in Ts:
+        Q=_appT(P,t); c=Q.max(1); cr=(np.array(cls)[Q.argmax(1)]==y); e=0
+        for lo in np.arange(0,1,.1):
+            m=(c>=lo)&(c<lo+.1)
+            if m.sum(): e+=m.sum()*abs(cr[m].mean()-c[m].mean())
+        eces.append(e/len(c))
+    t_nll, t_ece = Ts[int(np.argmin(nll))], Ts[int(np.argmin(eces))]
+    macro("Tnll", f"{t_nll:.2f}"); macro("Tece", f"{t_ece:.2f}")
+    fig, ax = plt.subplots(figsize=(8.6, 3.9))
+    ax.plot(Ts, eces, color=TEAL, lw=2.6, label="calibration error (ECE)")
+    ax.axvline(t_ece, color=TEAL, ls=(0,(4,3)), lw=1.4)
+    ax.annotate(f"ECE best\nT={t_ece:.2f}", (t_ece, max(eces)*0.80), color=TEAL,
+                fontsize=10.5, ha="center", fontweight="bold")
+    ax.set_xlabel("Temperature $T$   (below 1 sharpens, above 1 flattens)")
+    ax.set_ylabel("Calibration error", color=TEAL)
+    ax.tick_params(axis="y", colors=TEAL)
+    ax2 = ax.twinx(); ax2.plot(Ts, nll, color=AMBER, lw=2.6, label="log-loss (NLL)")
+    ax2.axvline(t_nll, color=AMBER, ls=(0,(4,3)), lw=1.4)
+    ax2.annotate(f"NLL best\nT={t_nll:.2f}", (t_nll, max(nll)*0.995), color=AMBER,
+                 fontsize=10.5, ha="center", fontweight="bold")
+    ax2.set_ylabel("Log-loss", color=AMBER); ax2.tick_params(axis="y", colors=AMBER)
+    ax2.spines["top"].set_visible(False)
+    ax.axvline(1.0, color=SLATE, lw=1.0)
+    ax.annotate("no correction", (1.0, min(eces)), xytext=(6,4),
+                textcoords="offset points", fontsize=9.5, color=SLATE)
+    titled(ax, "The two objectives disagree, and only one of them calibrates",
+           "fitting the temperature by log-loss barely sharpens; fitting by calibration error does")
+    plt.tight_layout(); plt.savefig(FIG/"figS6_objective.png"); plt.close()
 
     # S5 training cost --------------------------------------------------------
     tt = pfm.copy(); tt["fam"] = tt.shorthand.apply(family_of)
@@ -573,7 +613,7 @@ def main():
 
     print(f"[07c] held-out accuracy {acc:.4f}")
     print(f"[07c] signature genes {TH}/{TE} = {TH/TE*100:.1f}%  ({len(X)-TE} loci not answerable)")
-    print(f"[07c] wrote 10 figures and {len(MACROS)} macros to paper/generated/")
+    print(f"[07c] wrote 11 figures and {len(MACROS)} macros to paper/generated/")
 
 
 if __name__ == "__main__":

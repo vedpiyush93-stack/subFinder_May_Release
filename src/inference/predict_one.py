@@ -39,8 +39,34 @@ from src.lit_validation.canon import build_canon
 
 
 def p_value_dirichlet_uniform(p: float, K: int = 12) -> float:
-    """p-value under a uniform-Dirichlet null hypothesis over K classes."""
+    """Marginal p-value for ONE substrate named in advance.
+
+    Under a uniform Dirichlet over K classes, a specified component is
+    Beta(1, K-1), so P(component > p) = (1-p)^(K-1). Verified by simulation:
+    at p=0.235 and K=12 the analytic value 0.0525 matches an empirical 0.0526.
+
+    This is the correct null for a substrate chosen before looking at the
+    output. It is NOT the right null for the winning substrate, which is the
+    maximum of K components -- see ``winner_is_significant``.
+    """
     return float((1.0 - p) ** (K - 1))
+
+
+def winner_is_significant(p_max: float, K: int = 12, alpha: float = 0.05) -> bool:
+    """Is the TOP-ranked substrate better than chance?
+
+    The winner is the largest of K components, so testing it against the
+    marginal null of ``p_value_dirichlet_uniform`` is anti-conservative: under a
+    uniform Dirichlet the maximum of 12 components exceeds 0.235 about 57% of
+    the time, not 5%. We therefore apply a Bonferroni correction over the K
+    substrates, i.e. require K*(1-p)^(K-1) < alpha.
+
+    For K=12, alpha=0.05 this means p_max > 0.392. That analytic threshold
+    matches the simulated 95th percentile of the maximum (0.392) almost exactly,
+    so despite Bonferroni's usual conservatism it is close to exact here --
+    the components are only weakly dependent through the sum-to-one constraint.
+    """
+    return bool(K * (1.0 - p_max) ** (K - 1) < alpha)
 
 
 class PULPredictor:
@@ -100,7 +126,8 @@ class PULPredictor:
             "confidence":        confidence,
             "probabilities":     probs_dict,
             "p_values":          pvals,
-            "is_significant":    pvals[predicted] < 0.05,
+            "is_significant":    winner_is_significant(probs_dict[predicted]),
+            "p_value_winner_adjusted": min(1.0, len(self.classes_) * pvals[predicted]),
             "signature_genes":   sig,
             "oov_proportion":    oov,
             "refuse_to_predict": refuse,

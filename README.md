@@ -348,10 +348,14 @@ possible.
 ### Tests
 
 ```bash
-pytest tests/leak_audit.py                     # splits + label-free embeddings
-pytest tests/verify_reduced_embedding_files.py # compacted FastText == full model
-pytest tests/verify_input_formats_agree.py     # token string == dbCAN CGC table
+pytest                                         # all 13, ~2 min
 ```
+
+| suite | asserts |
+|---|---|
+| `leak_audit.py` | splits disjoint; embeddings never see a label or a fold |
+| `verify_reduced_embedding_files.py` | compacted FastText == full gensim model |
+| `verify_input_formats_agree.py` | token string == dbCAN CGC table, exactly |
 
 The last one matters if you touch `src/preprocessing/cgc_loader.py`: it renders
 real loci into a CGC table, reads them back, and requires identical tokens and
