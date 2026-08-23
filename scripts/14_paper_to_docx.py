@@ -61,9 +61,7 @@ def strip_command(text: str, name: str) -> str:
             i = after
             continue
         out.append(text[i:j])
-        k = after
-        while k < len(text) and text[k] in " \t":
-            k += 1
+        k = _skip_optional(text, after)
         if k < len(text) and text[k] == "{":
             depth, k = 1, k + 1
             while k < len(text) and depth:
@@ -87,20 +85,37 @@ def flatten_inputs(text: str, base: Path) -> str:
     return re.sub(r"\\input\{([^}]*)\}", sub, text)
 
 
+def _skip_optional(text: str, k: int) -> int:
+    """Step past whitespace and any ``[...]`` optional argument starting at k."""
+    while k < len(text) and text[k] in " \t\n":
+        k += 1
+    if k < len(text) and text[k] == "[":
+        depth = 1
+        k += 1
+        while k < len(text) and depth:
+            if text[k] == "[":
+                depth += 1
+            elif text[k] == "]":
+                depth -= 1
+            k += 1
+        while k < len(text) and text[k] in " \t\n":
+            k += 1
+    return k
+
+
 def extract_braced(text: str, name: str) -> str | None:
-    """Return the brace-balanced argument of ``\\name{...}``, or None."""
+    """Return the brace-balanced argument of ``\\name{...}``, or None.
+
+    Handles ``\\title[running head]{full title}``: the optional argument has to be
+    stepped over, not scanned character by character, or the first letter inside the
+    brackets aborts the search and the document silently loses its title.
+    """
     j = text.find("\\" + name)
     if j == -1:
         return None
-    k = j + len(name) + 1
-    while k < len(text) and text[k] != "{":
-        if text[k] not in " \t\n[":
-            # e.g. \title[short]{long} -- skip the optional argument
-            if text[k] == "]":
-                k += 1
-                continue
-            return None
-        k += 1
+    k = _skip_optional(text, j + len(name) + 1)
+    if k >= len(text) or text[k] != "{":
+        return None
     depth, start, k = 1, k + 1, k + 1
     while k < len(text) and depth:
         if text[k] == "{":
@@ -109,6 +124,49 @@ def extract_braced(text: str, name: str) -> str | None:
             depth -= 1
         k += 1
     return text[start:k - 1]
+
+
+def _number_captions(text: str, *, supplement: bool) -> str:
+    """Number the floats, then resolve every \\ref to the number it points at.
+
+    pandoc drops \\ref entirely, so the Word draft arrived saying "Figure  shows"
+    and "Table  gives" with a blank where the number belongs. Numbering the captions
+    here means the mapping is already in hand, so the references can be filled in
+    from the same pass.
+    """
+    prefix = "S" if supplement else ""
+    counts = {"figure": 0, "table": 0}
+    ref = {}                       # label -> "Figure 3" / "Table S1"
+    out, i, env, pending = [], 0, None, None
+    while i < len(text):
+        for name in ("figure", "table"):
+            if text.startswith(f"\\begin{{{name}}}", i):
+                env, pending = name, None
+                break
+        if text.startswith("\\caption{", i) and env:
+            counts[env] += 1
+            pending = f"{env.capitalize()} {prefix}{counts[env]}"
+            out.append("\\caption{" + pending + ". ")
+            i += len("\\caption{")
+            env = None
+            continue
+        if text.startswith("\\label{", i) and pending:
+            j = text.index("}", i)
+            ref[text[i + len("\\label{"):j]] = pending
+            out.append(text[i:j + 1])
+            i = j + 1
+            continue
+        out.append(text[i])
+        i += 1
+    text = "".join(out)
+
+    def fill(m: re.Match) -> str:
+        target = ref.get(m.group(1))
+        if target is None:
+            return m.group(0)
+        # the prose already writes "Figure~\ref{...}", so emit the bare number
+        return target.split()[-1]
+    return re.sub(r"\\ref\{([^}]*)\}", fill, text)
 
 
 def prepare(src: Path, work: Path) -> Path:
@@ -136,6 +194,16 @@ def prepare(src: Path, work: Path) -> Path:
     for env in ("table", "figure"):
         text = text.replace(f"\\begin{{{env}*}}", f"\\begin{{{env}}}")
         text = text.replace(f"\\end{{{env}*}}", f"\\end{{{env}}}")
+
+    # \centering inside a float makes pandoc wrap the figure in a two-column table
+    # whose columns are 2.75in wide, so every plot came out at less than half the
+    # text width. Pandoc centres figures on its own, so the command is redundant here.
+    text = re.sub(r"\\centering\s*", "", text)
+
+    # Number the captions. The journal class does this at typesetting time, but pandoc
+    # emits captions as plain paragraphs, so a Word draft arrives with six unlabelled
+    # figures and nobody can say "see Figure 3" in a comment.
+    text = _number_captions(text, supplement=("supplement" in src.name))
 
     # booktabs partial rules draw nothing in Word, and pandoc spills their arguments
     # into the header row as literal text ("(lr) 2-4").

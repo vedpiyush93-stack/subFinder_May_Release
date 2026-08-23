@@ -116,8 +116,11 @@ def main():
         ax.scatter([i], [v.mean()], marker="D", s=42, color=AMBER, zorder=5,
                    edgecolor="white", linewidths=0.9)
     ax.set_xticks(range(len(order)))
-    ax.set_xticklabels([o.replace("Counts + ", "Counts +\n").replace("Embedding + ", "Embedding +\n")
-                        .replace("Deep: ", "Deep:\n") for o in order], fontsize=10.5)
+    # Wrap on width rather than on a fixed prefix: the family names are now long
+    # enough ("Embedding + BalancedRF") that breaking only after the prefix leaves a
+    # second line that collides with its neighbour.
+    import textwrap
+    ax.set_xticklabels([textwrap.fill(o, 11) for o in order], fontsize=9.0)
     ax.set_ylabel("Test accuracy", fontsize=12)
     ax.yaxis.grid(True, color=RULE, lw=0.7); ax.set_axisbelow(True)
     titled(ax, "Accuracy by model family",
