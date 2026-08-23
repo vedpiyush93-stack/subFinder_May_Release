@@ -117,7 +117,12 @@ def main() -> None:
     print(f"[15] uploaded to https://huggingface.co/spaces/{args.repo}")
 
     if args.make_public:
-        api.update_repo_visibility(repo_id=args.repo, repo_type="space", private=False)
+        # huggingface_hub 1.x folded this into update_repo_settings; keep the old
+        # call as a fallback so the script works on either major version.
+        if hasattr(api, "update_repo_settings"):
+            api.update_repo_settings(repo_id=args.repo, repo_type="space", private=False)
+        else:
+            api.update_repo_visibility(repo_id=args.repo, repo_type="space", private=False)
         print("[15] visibility set to PUBLIC")
 
     info = api.space_info(args.repo)
