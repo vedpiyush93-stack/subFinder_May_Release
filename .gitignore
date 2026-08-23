@@ -59,6 +59,20 @@ __pycache__/
 .DS_Store
 *.egg-info/
 
+# Local editor and tool state, never part of the release
+.vscode/
+.idea/
+
+# ---------------------------------------------------------------------------
+# docs/ is generated output, not source: the deck, the per-PUL HTML view and the
+# summary tables are all rebuilt by scripts/07, /08, /09, /10 and /12, and the
+# scripts create the directory if it is missing. It was tracked until Aug 2026,
+# when the shipped per_pul_report.html was found to still describe the previous
+# (v1) model -- a stale artifact in the repository is worse than no artifact,
+# because someone opens it and believes it.
+# ---------------------------------------------------------------------------
+docs/
+
 # ---------------------------------------------------------------------------
 # Jupyter / LaTeX noise
 # ---------------------------------------------------------------------------

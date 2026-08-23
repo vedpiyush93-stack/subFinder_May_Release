@@ -18,7 +18,7 @@ locus is predicted exactly once by a model that never saw it.
     python3 scripts/07c_build_paper_figures.py
 """
 from __future__ import annotations
-import argparse, sys, warnings
+import argparse, re, sys, warnings
 from pathlib import Path
 import numpy as np, pandas as pd
 import matplotlib
@@ -37,6 +37,7 @@ from src.lit_validation.alias_map import SUBSTRATE_ALIAS
 FIG = ROOT/"paper/Fig"; TAB = ROOT/"paper/tables"; GEN = ROOT/"paper/generated"
 for d in (FIG, TAB, GEN): d.mkdir(parents=True, exist_ok=True)
 DEPLOYED = "cpuV2__ET500_log2"
+SKIP = {"null", ""}   # never shown to a user, in any displayed gene list
 
 INK, MUTED, RULE = "#111820", "#3f4c59", "#c9d2da"
 TEAL, AMBER, ROSE, SLATE = "#1f6f7f", "#b8791f", "#a8434b", "#63707d"
@@ -63,13 +64,23 @@ def titled(ax, title, subtitle=None, tfs=14, sfs=11):
                     fontsize=sfs, color=MUTED, ha="left", va="bottom")
 
 def family_of(short):
-    if short.startswith(("cpu", "cpuV2", "ftCbow_MM")): return "Counts + ExtraTrees"
-    if "BRF100" in short: return "Embedding + BalancedRF"
+    """Group a configuration by what it actually is.
+
+    The representation is the part before "__" and the classifier the part after, so
+    both have to be read. An earlier version keyed on a prefix list, which put the
+    embedding config ftCbow_MM__ET500_sqrt in the counts group and the counts
+    baseline cv__BRF100 in the embedding group -- mislabelling both boxes of the
+    benchmark figure.
+    """
+    rep = "Counts" if short.split("__")[0] in ("cpu", "cpuV2", "cv") else "Embedding"
     if "__LSTMattn" in short: return "Deep: LSTM + attention"
     if "__LSTM" in short:    return "Deep: LSTM"
     if "__JustAttn" in short: return "Deep: attention"
     if "__Trans" in short:   return "Deep: transformer"
+    if "BRF100" in short: return f"{rep} + BalancedRF"
+    if "ET500" in short:  return f"{rep} + ExtraTrees"
     return "other"
+
 
 
 def main():
@@ -117,28 +128,199 @@ def main():
     plt.savefig(FIG/"fig1_families.png"); plt.close()
 
     # -------------------------------------------------- held-out predictions
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=S)
-    y_pred = np.array([None]*len(X), dtype=object)
-    P = np.zeros((len(X), len(subs))); cls = None
-    for fold, (_, te) in enumerate(skf.split(X, y)):
+    # Every per-locus figure and rate below comes from the SAME protocol as the
+    # benchmark table: 5 repeats x 5 folds. Reporting them from a single 5-fold
+    # pass, as an earlier version did, put two different numbers on the same
+    # quantity -- 0.9272 in the text against 0.9177 in the benchmark -- with
+    # nothing to tell a reader they were measured differently. Each locus is
+    # therefore held out REPS times and contributes that many predictions.
+    import joblib
+    REPS = (42, 43, 44, 45, 46)
+    y_rep, P_list, inform_list, foldacc = [], [], [], []
+    cls = None
+    for seed in REPS:
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        order, Ps, ninf = [], [], []
+        for fold, (tr, te) in enumerate(skf.split(X, y)):
+            z = np.load(ROOT/f"artifacts/predictions/{DEPLOYED}/r{seed}_f{fold}/probs_test.npz",
+                        allow_pickle=True)
+            cls = [str(c) for c in z["classes"]]
+            order.append(te); Ps.append(z["probs"])
+            foldacc.append(float((np.array(cls)[z["probs"].argmax(1)] == y[te]).mean()))
+            # informative = in THIS fold's training vocabulary and not the padding
+            # token. min_df=1, so the fitted vocabulary is exactly the training tokens.
+            fv = set(t for i in tr for t in tok_cpu_v2(X[i]))
+            ninf.append(np.array([sum(1 for t in tok_cpu_v2(X[i])
+                                      if t != "null" and t in fv) for i in te]))
+        idx = np.concatenate(order)
+        P_list.append(np.concatenate(Ps)); y_rep.append(y[idx])
+        inform_list.append(np.concatenate(ninf))
+    P        = np.concatenate(P_list)            # 5150 x 12
+    y_all    = np.concatenate(y_rep)             # the truth aligned to P
+    n_inform = np.concatenate(inform_list)
+    y_pred   = np.array(cls)[P.argmax(1)]
+    # per-substrate vote fractions from the saved per-fold classifiers: the
+    # p-values are computed from these counts, not from the normalised vector
+    from scipy.stats import binom
+    _cache = ROOT/"artifacts/oof_vote_fractions.npz"
+    if _cache.exists():
+        Vv = np.load(_cache)["V"]
+    else:
+        vv = []
+        for seed in REPS:
+            sk = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+            for fold, (_, te) in enumerate(sk.split(X, y)):
+                pl = joblib.load(ROOT/f"artifacts/predictions/{DEPLOYED}/r{seed}_f{fold}/classifier.joblib")
+                Zt = pl.named_steps["cv"].transform(X[te])
+                vv.append(np.column_stack([e.predict_proba(Zt)[:, 1]
+                                           for e in pl.named_steps["vr"].estimators_]))
+        Vv = np.concatenate(vv); np.savez_compressed(_cache, V=Vv)
+    NTREE = 500
+    PV = binom.sf(np.rint(Vv*NTREE).astype(int) - 1, NTREE, 0.5)
+    macro("NTrees", NTREE)
+    macro("VoteThresh", int(binom.isf(0.05/len(subs), NTREE, 0.5)) + 1)
+    macro("NReps", len(REPS))
+    macro("NPredictions", f"{len(y_all):,}".replace(",", "{,}"))
+    # quoted the way the benchmark quotes it: mean and s.d. over the 25 fits
+    macro("HeldOutAcc", f"{np.mean(foldacc):.4f}")
+    macro("HeldOutSd",  f"{np.std(foldacc, ddof=1):.4f}")
+
+    # The six worked examples are individual loci, so they need one named pass
+    # rather than a pooled estimate: a locus held out five times has five
+    # probability vectors and no single one of them is "the" answer. Repeat S is
+    # used, and the manuscript says so where the examples are presented.
+    P_one = np.zeros((len(X), len(subs)))
+    for fold, (_, te) in enumerate(StratifiedKFold(n_splits=5, shuffle=True,
+                                                   random_state=S).split(X, y)):
         z = np.load(ROOT/f"artifacts/predictions/{DEPLOYED}/r{S}_f{fold}/probs_test.npz",
                     allow_pickle=True)
-        cls = [str(c) for c in z["classes"]]
-        P[te] = z["probs"]; y_pred[te] = np.array(cls)[z["probs"].argmax(1)]
-    acc = float((y_pred == y).mean())
-    macro("HeldOutAcc", f"{acc:.4f}")
+        P_one[te] = z["probs"]
+    macro("CaseSeed", S)
 
-    import joblib
     from src.calibration.temperature import apply_temperature
-    T = float(joblib.load(ROOT/"artifacts/final_model_v2.pkl")["T"])
+    _bundle = joblib.load(ROOT/"artifacts/final_model_v2.pkl")
+    T = float(_bundle["T"]); pipe_final = _bundle["pipeline"]
+    NTREES_DEPLOYED = int(pipe_final.named_steps["vr"].estimators_[0].n_estimators)
     # must be the same transform the deployed model applies (per-class logit / T,
     # sigmoid, renormalise) -- a softmax-style log(p)/T is a different operation
     # and would report probabilities no user ever sees.
     Pc = apply_temperature(P, T)
+    Pc_one = apply_temperature(P_one, T)
+    # Two index spaces exist from here on and mixing them is silent:
+    #   pooled  (P, Pc, y_all, correct, Vv, PV) -- one row per PREDICTION
+    #   by-locus(P_one, Pc_one, X, y)           -- one row per LOCUS
+    assert P.shape[0] == len(y_all) == len(REPS)*len(X), "pooled arrays misaligned"
+    assert P_one.shape[0] == len(X) == len(y), "per-locus arrays misaligned"
+    assert Vv.shape[0] == len(y_all), "vote fractions not aligned to pooled truth"
     macro("DeployT", f"{T:.4f}")
 
+    EXAMPLE_PUL = "1.B.14.12.1,GntR,PL6|PL6_1,PL17_2|PL17,2.A.1.14.25,null"
+
+    # the winning panel's vote count for the worked example, quoted in the text
+    _z0 = pipe_final.named_steps["cv"].transform([EXAMPLE_PUL])
+    _v0 = np.column_stack([e.predict_proba(_z0)[:, 1]
+                           for e in pipe_final.named_steps["vr"].estimators_])[0]
+    macro("VoteExampleTop", f"{int(round(_v0.max()*500))}")
+
+    # ============================================================ FIG 0 (workflow)
+    # What the tool does to one locus, end to end. Every label here is produced by
+    # the deployed pipeline, not drawn by hand, so the figure cannot drift from it.
+    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+    ex_toks = tok_cpu_v2(EXAMPLE_PUL)
+    _bx = pipe_final.named_steps["cv"].transform([EXAMPLE_PUL])
+    _bv = np.column_stack([e.predict_proba(_bx)[:, 1]
+                           for e in pipe_final.named_steps["vr"].estimators_])[0]
+    _bp = apply_temperature(pipe_final.predict_proba([EXAMPLE_PUL]), T)[0]
+    _bi = int(_bp.argmax())
+    _btop = np.argsort(-_bp)[:3]
+
+    from src.ablation.leave_one_token_out import ablate_pul_for_class
+    _d = ablate_pul_for_class(pipe_final, EXAMPLE_PUL, cls[_bi], top_k=5, apply_temp=T)
+    _ex_genes = ", ".join([t for t, _ in _d if t not in SKIP and not t.isdigit()][:3])
+
+    fig = plt.figure(figsize=(13.4, 4.85))
+    ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(0, 134); ax.set_ylim(0, 50); ax.axis("off")
+
+    ACC  = "#0e5c6b"        # deeper than TEAL, for the accents
+    WASH = "#eef4f5"
+    def stage(x, w, n, title, sub, y=7.6, h=29.9):
+        # a numbered band across the top of each panel carries the step and its title
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=1.4",
+                                    facecolor="white", edgecolor=RULE, lw=1.0, zorder=1))
+        ax.add_patch(FancyBboxPatch((x, y + h - 6.6), w, 6.6,
+                                    boxstyle="round,pad=0,rounding_size=1.4",
+                                    facecolor=ACC, edgecolor="none", zorder=2))
+        ax.add_patch(plt.Rectangle((x, y + h - 6.6), w, 1.6, facecolor=ACC,
+                                   edgecolor="none", zorder=2))
+        ax.text(x + 3.4, y + h - 3.3, n, ha="center", va="center", fontsize=10,
+                fontweight="bold", color=ACC, zorder=4,
+                bbox=dict(boxstyle="circle,pad=0.30", facecolor="white", edgecolor="none"))
+        ax.text(x + 7.2, y + h - 3.3, title, ha="left", va="center", fontsize=11.2,
+                fontweight="bold", color="white", zorder=4)
+        ax.text(x + w/2, y + h - 9.6, sub, ha="center", va="center", fontsize=9.2,
+                color=MUTED, style="italic", zorder=4)
+    def flow(x0, x1):
+        ax.add_patch(FancyArrowPatch((x0, 21.5), (x1, 21.5), arrowstyle="-|>",
+                                     mutation_scale=17, lw=1.6, color=ACC, zorder=5))
+
+    W = 29.5
+    stage(1.5, W, "1", "The locus", "as an annotation pipeline reports it")
+    for k, ln in enumerate(["1.B.14.12.1   GntR", "PL6|PL6_1   PL17_2|PL17",
+                            "2.A.1.14.25   null"]):
+        ax.add_patch(plt.Rectangle((3.6, 21.0 - k*5.0), 25.3, 3.9, facecolor=WASH,
+                                   edgecolor="none", zorder=2))
+        ax.text(16.25, 22.95 - k*5.0, ln, ha="center", va="center",
+                fontsize=9.3, color=INK, family="monospace", zorder=3)
+    flow(31.6, 35.4)
+
+    stage(35.5, W, "2", "Its gene families", f"{len(ex_toks)} tokens, transporters at family level")
+    for k in range(0, len(ex_toks), 3):
+        row = ex_toks[k:k+3]
+        for c, tk in enumerate(row):
+            bx = 38.0 + c*8.6
+            ax.add_patch(FancyBboxPatch((bx, 21.0 - (k//3)*5.0), 7.6, 3.9,
+                                        boxstyle="round,pad=0,rounding_size=0.7",
+                                        facecolor=WASH, edgecolor="none", zorder=2))
+            ax.text(bx + 3.8, 22.95 - (k//3)*5.0, tk, ha="center", va="center",
+                    fontsize=8.6, color=INK, family="monospace", zorder=3)
+    flow(65.6, 69.4)
+
+    stage(69.5, W, "3", "Twelve panels vote", f"{NTREE} trees each, yes or no")
+    for k, ci in enumerate(_btop):
+        v = float(_bv[ci]); yy = 22.9 - k*5.0
+        ax.add_patch(plt.Rectangle((71.8, yy - 1.95), 24.9, 3.9, facecolor=WASH,
+                                   edgecolor="none", zorder=2))
+        ax.add_patch(plt.Rectangle((71.8, yy - 1.95), 24.9*v, 3.9,
+                                   facecolor=ACC if ci == _bi else SLATE,
+                                   alpha=1 if ci == _bi else .28, edgecolor="none", zorder=3))
+        w_ = v > .5 and ci == _bi
+        ax.text(73.0, yy, cls[ci], ha="left", va="center", fontsize=8.9, zorder=4,
+                color="white" if w_ else INK, fontweight="bold" if ci == _bi else "normal")
+        ax.text(95.6, yy, f"{int(round(v*NTREE))}/{NTREE}", ha="right", va="center",
+                fontsize=8.9, zorder=4, color="white" if w_ else INK,
+                fontweight="bold" if ci == _bi else "normal")
+    flow(99.6, 103.4)
+
+    stage(103.5, W, "4", "What you act on", "reported for all twelve")
+    _pv = binom.sf(int(round(_bv[_bi]*NTREE)) - 1, NTREE, 0.5)
+    rows = [("substrate", cls[_bi], True), ("probability", f"{_bp[_bi]:.2f}", True),
+            ("$p$-value", f"{_pv:.0e}", False), ("driven by", _ex_genes, False)]
+    for k, (lab, val, big) in enumerate(rows):
+        yy = 21.9 - k*4.3
+        ax.text(105.6, yy, lab, ha="left", va="center", fontsize=8.9, color=MUTED, zorder=3)
+        ax.text(130.6, yy, val, ha="right", va="center", zorder=3,
+                fontsize=10.2 if big else 9.0, color=ACC if big else INK, fontweight="bold")
+        if k < len(rows) - 1:
+            ax.plot([105.6, 130.6], [yy - 2.3, yy - 2.3], color=RULE, lw=0.7, zorder=2)
+
+    ax.text(1.5, 43.4, "How subFinder reads one locus", ha="left", va="bottom",
+            fontsize=15.5, fontweight="bold", color=INK)
+    ax.text(1.5, 39.9, "every value shown is what the released model returns for this locus",
+            ha="left", va="bottom", fontsize=10.5, color=MUTED)
+    plt.savefig(FIG/"fig0_workflow.png", bbox_inches="tight"); plt.close()
+
     # ============================================================ FIG 2
-    cm = confusion_matrix(y, y_pred, labels=subs).astype(float)
+    cm = confusion_matrix(y_all, y_pred, labels=subs).astype(float)
     cmn = cm / cm.sum(1, keepdims=True)
     fig, ax = plt.subplots(figsize=(7.6, 6.2))
     im = ax.imshow(cmn, cmap="Blues", vmin=0, vmax=1)
@@ -161,18 +343,35 @@ def main():
            "rows sum to 1.00; the diagonal is that substrate's accuracy")
     plt.savefig(FIG/"fig2_confusion.png"); plt.close()
 
-    p, r, f1, sup = precision_recall_fscore_support(y, y_pred, labels=subs,
+    p, r, f1, sup = precision_recall_fscore_support(y_all, y_pred, labels=subs,
                                                     average=None, zero_division=0)
-    per = pd.DataFrame({"substrate": subs, "n": sup, "precision": p, "recall": r,
+    # `sup` counts POOLED predictions, so it is REPS times the number of loci.
+    # The table must show loci, or a reader comparing it with the class sizes in
+    # the Data section sees 1200 against 240 for the same substrate.
+    n_loci = (sup // len(REPS)).astype(int)
+    assert (sup % len(REPS) == 0).all(), "each locus should appear once per repeat"
+    assert n_loci.sum() == len(X), "per-substrate loci must sum to the corpus"
+    per = pd.DataFrame({"substrate": subs, "loci": n_loci, "precision": p, "recall": r,
                         "f1": f1}).sort_values("f1", ascending=False)
     per.to_csv(TAB/"table_per_substrate.csv", index=False)
-    body = "\n".join(f"{q.substrate} & {int(q.n)} & {q.precision:.2f} & {q.recall:.2f} & {q.f1:.2f} \\\\"
+    body = "\n".join(f"{q.substrate} & {int(q.loci)} & {q.precision:.2f} & {q.recall:.2f} & {q.f1:.2f} \\\\"
                      for _, q in per.iterrows())
     (GEN/"table_persubstrate.tex").write_text(
-        "\\begin{tabular}{lrrrr}\n\\toprule\nSubstrate & $n$ & Precision & Recall & F1 \\\\\n"
+        "\\begin{tabular}{lrrrr}\n\\toprule\nSubstrate & Loci & Precision & Recall & F1 \\\\\n"
         f"\\midrule\n{body}\n\\bottomrule\n\\end{{tabular}}\n")
     worst = per.iloc[-1]; best = per.iloc[0]
     macro("WorstSub", worst.substrate); macro("WorstF", f"{worst.f1:.2f}")
+    second = per.iloc[-2]
+    macro("SecondWorstSub", second.substrate)
+    macro("SecondWorstF", f"{second.f1:.2f}")
+    macro("SecondWorstPrec", f"{second.precision:.2f}")
+    macro("SecondWorstRec", f"{second.recall:.2f}")
+    macro("BestRec", f"{best.recall:.2f}")
+    # the substrate the worst class most often loses loci to
+    _cm = confusion_matrix(y_all, y_pred, labels=subs).astype(float)
+    _wi = subs.index(worst.substrate)
+    _off = [(_cm[_wi][j], subs[j]) for j in range(len(subs)) if j != _wi]
+    macro("WorstConfusedWith", max(_off)[1])
     macro("WorstRec", f"{worst.recall:.2f}"); macro("WorstPrec", f"{worst.precision:.2f}")
     macro("BestSub", best.substrate)
     ch = per[per.substrate == "chitin"].iloc[0]; macro("ChitinF", f"{ch.f1:.2f}")
@@ -188,7 +387,6 @@ def main():
     # but it names nothing, so it is excluded from a podium meant to be read
     # biologically. Bare digits are subfamily fragments left by splitting on "_"
     # and are likewise uninformative on their own.
-    SKIP = {"null", ""}
     rows = []
     for s in subs:
         cnt = {}
@@ -256,6 +454,19 @@ def main():
     macro("SigElig", TE); macro("SigHit", TH); macro("SigRate", f"{TH/TE*100:.1f}")
     macro("SigScope", TS); macro("SigFlag", TF); macro("SigScopeRate", f"{TF/TS*100:.1f}")
     macro("SigSkipped", len(X)-TE)
+    # The prose used to call chitin the least-agreeing substrate. It is not, and a
+    # superlative typed by hand goes stale the moment the curated table changes, so
+    # the extremes are emitted here and quoted rather than asserted.
+    _lo = fu.iloc[0]                       # fu is sorted ascending by by-locus rate
+    macro("FunnelLowSub", str(_lo.substrate))
+    macro("FunnelLowRate", f"{_lo.rate*100:.0f}")
+    _ch = fu[fu.substrate == "chitin"].iloc[0]
+    macro("ChitinFunnelRate", f"{_ch.rate*100:.0f}")
+    macro("ChitinFunnelRank", str(int((fu.rate < _ch.rate).sum()) + 1))
+    _lo_fam = fu.sort_values("srate").iloc[0]
+    macro("FunnelLowFamSub", str(_lo_fam.substrate))
+    macro("FunnelLowFamRate", f"{_lo_fam.srate*100:.0f}")
+    macro("ChitinFamRate", f"{_ch.srate*100:.0f}")
 
     fig, (aL, aR) = plt.subplots(1, 2, figsize=(11.0, 4.9))
     yy = np.arange(len(fu))
@@ -284,15 +495,35 @@ def main():
     plt.savefig(FIG/"fig4_funnel.png"); plt.close()
 
     # ============================================================ FIG 5 (worked examples)
-    top3 = {int(rr.idx): rr.top3 for _, rr in abl.iterrows()}
+    # `null` marks an unannotated neighbour. The classifier uses it -- an
+    # unannotated gene is weak evidence in itself -- but it names nothing, so it
+    # is suppressed from every DISPLAYED gene list, exactly as it is from the
+    # signature-gene figure. Drawing from top5 keeps three real genes where the
+    # locus has three; a locus with fewer simply shows fewer.
+    def _display_genes(row, k=3):
+        pool = str(row.top5 if isinstance(row.top5, str) and row.top5 else row.top3)
+        out = []
+        for tok in pool.split(";"):
+            tok = tok.strip()
+            if tok and tok not in SKIP and not tok.isdigit() and tok not in out:
+                out.append(tok)
+            if len(out) == k: break
+        return ";".join(out)
+    top3 = {int(rr.idx): _display_genes(rr) for _, rr in abl.iterrows()}
     recs = []
     for i in range(len(X)):
         if i not in top3: continue
-        o = np.argsort(-Pc[i]); tr = int(list(o).index(cls.index(y[i])))+1
-        recs.append(dict(idx=i, true=y[i], pred=cls[int(o[0])], conf=float(Pc[i][o[0]]),
-                         second=cls[int(o[1])], p2=float(Pc[i][o[1]]), rank=tr,
-                         sig=top3[i], margin=float(Pc[i][o[0]]-Pc[i][o[1]])))
+        o = np.argsort(-Pc_one[i]); tr = int(list(o).index(cls.index(y[i])))+1
+        recs.append(dict(idx=i, true=y[i], pred=cls[int(o[0])], conf=float(Pc_one[i][o[0]]),
+                         second=cls[int(o[1])], p2=float(Pc_one[i][o[1]]), rank=tr,
+                         sig=top3[i], margin=float(Pc_one[i][o[0]]-Pc_one[i][o[1]])))
     C = pd.DataFrame(recs)
+    # How many of the genes SHOWN are documented for the true substrate, and for
+    # the predicted one. Every panel's caption is a claim about these, so the
+    # selection below requires them rather than hoping for them.
+    C["n_true_listed"] = [len(set(str(q.sig).split(";")) & canon[q.true]) for _, q in C.iterrows()]
+    C["n_pred_listed"] = [len(set(str(q.sig).split(";")) & canon[q.pred]) for _, q in C.iterrows()]
+    C["n_shown"] = [len([g for g in str(q.sig).split(";") if g]) for _, q in C.iterrows()]
     # a wrong call is "recoverable" if the truth is 2nd and the top two are close,
     # or if a listed enzyme for the TRUE substrate sits in the signature genes
     C["rescuable"] = [(q["rank"] == 2 and q.margin < 0.15) or
@@ -305,38 +536,75 @@ def main():
         fresh = sel[~sel.true.isin(seen)]
         q = (fresh if len(fresh) else sel).iloc[0]
         used.add(q.idx); seen.add(q.true); picks.append((q, label))
-    take((C.true == C.pred) & (C.conf > .90), "Confident and correct")
-    take((C.true == C.pred) & C.conf.between(.35, .60), "Correct, rightly hedged")
-    take((C.true != C.pred) & (C["rank"] == 2) & (C.margin < .12), "Wrong; truth a near-tie 2nd")
-    take((C.true != C.pred) & C.rescuable & (C["rank"] == 2), "Wrong; genes give it away")
-    take((C.true == C.pred) & (C.true == "chitin"), "Right, no listed enzyme")
-    take((C.true == C.pred) & C.conf.between(.60, .88), "A routine call")
-    while len(picks) < 6: take(pd.Series(True, index=C.index), "Further example")
+    # Two panels showing the tool working, three showing that when it is wrong the
+    # output still carries the answer, and one honest limitation. Each condition
+    # requires the evidence its caption claims.
+    ok, wrong = C.true == C.pred, C.true != C.pred
+    take(ok & (C.conf > .90) & (C.n_true_listed >= 2),
+         "Correct, with reasons")
+    take(ok & C.conf.between(.40, .75) & (C.n_true_listed >= 1),
+         "Correct, and hedged")
+    take(wrong & (C["rank"] == 2) & (C.margin < .15),
+         "Wrong; truth is second")
+    take(wrong & (C.n_true_listed >= 1) & (C["rank"] <= 3),
+         "Wrong; genes name it")
+    take(wrong & (C["rank"] == 3),
+         "Wrong; truth is third")
+    take(ok & (C.n_true_listed == 0) & (C.n_shown > 0),
+         "Correct; table is silent")
+    # fall back only if a category is genuinely empty, and say so
+    while len(picks) < 6:
+        before = len(picks); take(pd.Series(True, index=C.index), "Further example")
+        if len(picks) == before: break
 
-    fig, axes = plt.subplots(2, 3, figsize=(12.0, 6.0))
-    fig.subplots_adjust(hspace=1.05, wspace=0.14, top=0.82)
+    fig, axes = plt.subplots(2, 3, figsize=(12.6, 7.5))
+    fig.subplots_adjust(hspace=1.12, wspace=0.20, top=0.775, bottom=0.08)
     for ax, (q, label) in zip(axes.ravel(), picks):
-        o = np.argsort(-Pc[q.idx])[:3]
-        for k, t in enumerate(o):
-            v = float(Pc[q.idx][t]); good = cls[t] == q.true
-            ax.barh(2-k, v, color=TEAL if good else ROSE, height=.66, linewidth=0)
-            ins = v >= 0.62
-            ax.text(v-0.025 if ins else v+0.025, 2-k, f"{cls[t]}  {v:.2f}",
-                    va="center", ha="right" if ins else "left", fontsize=10.5,
+        right = (q.true == q.pred)
+        order = np.argsort(-Pc_one[q.idx])[:3]
+        for k, t in enumerate(order):
+            v = float(Pc_one[q.idx][t]); is_true = cls[t] == q.true
+            ax.barh(2 - k, v, color=TEAL if is_true else ROSE, height=.62,
+                    linewidth=0, zorder=3)
+            ins = v >= 0.58
+            ax.text(v - 0.02 if ins else v + 0.02, 2 - k,
+                    f"{cls[t]}  {v:.2f}", va="center",
+                    ha="right" if ins else "left", fontsize=10.5,
                     color="white" if ins else INK,
-                    fontweight="bold" if good else "normal")
-        ax.set_xlim(0, 1.02); ax.set_ylim(-0.6, 2.6); ax.set_yticks([])
-        ax.set_xticks([0, .5, 1]); ax.tick_params(labelsize=9.5)
-        ax.set_title(label, loc="left", fontsize=12, fontweight="bold", color=INK, pad=30)
-        ax.annotate(f"true substrate: {q.true}\nsignature genes: {str(q.sig).replace(';', ',  ')}",
-                    xy=(0, 1.04), xycoords="axes fraction", fontsize=10, color=MUTED,
-                    ha="left", va="bottom", linespacing=1.6)
+                    fontweight="bold" if is_true else "normal", zorder=4)
+        ax.set_xlim(0, 1.02); ax.set_ylim(-0.65, 2.65); ax.set_yticks([])
+        ax.set_xticks([0, .5, 1]); ax.tick_params(labelsize=9.5, length=0)
+        ax.grid(True, axis="x", color=RULE, lw=0.6, zorder=0); ax.set_axisbelow(True)
+
+        # heading: the outcome, colour-coded, above the scenario
+        ax.annotate("CORRECT" if right else "WRONG",
+                    xy=(0, 1.42), xycoords="axes fraction",
+                    fontsize=9, fontweight="bold", color=TEAL if right else ROSE,
+                    ha="left", va="bottom")
+        ax.annotate(label, xy=(0, 1.24), xycoords="axes fraction",
+                    fontsize=11, fontweight="bold", color=INK, ha="left", va="bottom")
+        # a filled marker means the curated table lists that gene for the TRUE
+        # substrate, so a reader can see the recovery evidence at a glance
+        genes = [g for g in str(q.sig).split(";") if g]
+        parts = ["\u25cf " + g if g in canon[q.true] else "\u25cb " + g for g in genes]
+        ax.annotate(f"true substrate: {q.true}", xy=(0, 1.06),
+                    xycoords="axes fraction", fontsize=9.5, color=MUTED,
+                    ha="left", va="bottom")
+        ax.annotate("genes: " + "   ".join(parts) if parts else "genes: none",
+                    xy=(0, -0.30), xycoords="axes fraction", fontsize=9.5,
+                    color=MUTED, ha="left", va="top")
         for sp in ax.spines.values(): sp.set_visible(False)
+
     fig.suptitle("Six held-out predictions", x=0.005, ha="left", fontsize=15,
-                 fontweight="bold", color=INK, y=0.985)
-    fig.text(0.005, 0.925, "the three highest calibrated probabilities; teal marks the true substrate",
-             fontsize=11.5, color=MUTED, ha="left")
+                 fontweight="bold", color=INK, y=0.995)
+    fig.text(0.005, 0.948,
+             "the three highest probabilities; teal is the true substrate. "
+             "\u25cf a gene the curated table lists for that substrate, \u25cb one it does not",
+             fontsize=11, color=MUTED, ha="left")
     plt.savefig(FIG/"fig5_cases.png", bbox_inches="tight"); plt.close()
+    for _q, _l in picks:
+        if _l.startswith("Wrong; truth is second"):
+            macro("CaseSecondC", f"{_q.p2:.2f}")
     cs = pd.DataFrame([dict(scenario=l, idx=int(q.idx), true=q.true, pred=q.pred,
                             confidence=round(float(q.conf), 4), second=q.second,
                             p_second=round(float(q.p2), 4), true_rank=int(q["rank"]),
@@ -347,12 +615,21 @@ def main():
         macro(f"CasePred{'ABCDEF'[k-1]}", q.pred)
         macro(f"CaseConf{'ABCDEF'[k-1]}", f"{q.conf:.2f}")
         macro(f"CaseSig{'ABCDEF'[k-1]}", str(q.sig).replace(";", ", "))
+        # Where the true substrate actually landed. The figure caption describes each
+        # panel as a hit or a miss, and without a generated rank that description is
+        # free to drift away from the panel it is describing.
+        macro(f"CaseRank{'ABCDEF'[k-1]}",
+              {1: "first", 2: "second", 3: "third"}.get(int(q["rank"]), str(int(q["rank"]))))
 
     # ============================================================ leaderboard + macros
     def row(cfg): 
         z = lb[lb.shorthand == cfg].iloc[0]; return float(z.mean_acc), float(z.std_acc)
     dep_a, dep_s = row(DEPLOYED); macro("DepAcc", f"{dep_a:.4f}"); macro("DepStd", f"{dep_s:.4f}")
     brf_a, brf_s = row("cv__BRF100"); macro("BrfAcc", f"{brf_a:.4f}"); macro("BrfStd", f"{brf_s:.4f}")
+    # the counts-with-whole-transporter-identifiers variant, quoted in the text
+    # as the before-and-after of swapping the classifier
+    cpu_a, _ = row("cpu__ET500_log2"); macro("CpuAcc", f"{cpu_a:.4f}")
+    macro("GapTok", f"{(dep_a-cpu_a)*100:.2f}")
     dl = lb[lb.shorthand.str.contains("__LSTM|__Trans|__JustAttn")].iloc[0]
     macro("DlAcc", f"{dl.mean_acc:.4f}"); macro("DlStd", f"{dl.std_acc:.4f}")
     macro("GapDl", f"{(dep_a-dl.mean_acc)*100:.2f}"); macro("GapBrf", f"{(dep_a-brf_a)*100:.2f}")
@@ -362,6 +639,28 @@ def main():
     vocab = len(_j.load(ROOT/"artifacts/final_model_v2.pkl")["pipeline"].named_steps["cv"].vocabulary_)
     macro("Vocab", vocab)
     macro("TokPerPul", f"{np.mean([len(tok_cpu_v2(x)) for x in X]):.1f}")
+
+    # The worked example in the main text is generated, not transcribed. It was
+    # previously typed by hand and had drifted: it showed the bare subfamily
+    # indices that the tokenizer discards, and the wrong token count.
+    ex_toks = tok_cpu_v2(EXAMPLE_PUL)
+    macro("ExampleRaw", EXAMPLE_PUL.replace("_", r"\_").replace("|", r"$|$"))
+    macro("ExampleTokens", ", ".join(r"\texttt{" + t.replace("_", r"\_") + "}"
+                                     for t in ex_toks))
+    macro("ExampleNTokens", len(ex_toks))
+    macro("ExampleNGenes", EXAMPLE_PUL.count(",") + 1)
+
+    # Evidence for discarding the residual subfamily index: it is not unique to a
+    # parent family, so retaining it would merge unrelated enzymes into one feature.
+    import collections as _c
+    _idx = _c.defaultdict(set)
+    for _s in X:
+        for _f in re.split(r"[,|]", str(_s)):
+            _h, _u, _t = _f.partition("_")
+            if _u and _t.isdigit(): _idx[_t].add(_h)
+    macro("SubIdxTotal", len(_idx))
+    macro("SubIdxShared", sum(1 for v in _idx.values() if len(v) > 1))
+    macro("SubIdxWorst", len(_idx.get("1", ())))
     macro("CanonPairs", sum(len(v) for v in canon.values()))
 
     lead = lb.head(7).copy()
@@ -405,21 +704,24 @@ def main():
         a, e = f"{q.accuracy:.4f}", f"{q.ece_10bin:.4f}"
         if q.method == "temperature_scaling": a, e = f"\\textbf{{{a}}}", f"\\textbf{{{e}}}"
         cb += f"{LBL.get(q.method, q.method)} & {a} & {e} \\\\\n"
-    (GEN/"table_calibration.tex").write_text(
-        "\\begin{tabular}{lrr}\n\\toprule\nMethod & Accuracy & ECE (10-bin) \\\\\n"
-        f"\\midrule\n{cb}\\bottomrule\n\\end{{tabular}}\n")
+    # (no calibration table: the manuscript reports these three numbers in prose)
     u = cal[cal.method == "uncalibrated"].iloc[0]
     t = cal[cal.method == "temperature_scaling"].iloc[0]
     iso = cal[cal.method.str.startswith("isotonic")].iloc[0]
     macro("EceRaw", f"{u.ece_10bin:.3f}"); macro("EceTemp", f"{t.ece_10bin:.3f}")
     macro("EceIso", f"{iso.ece_10bin:.3f}"); macro("IsoAcc", f"{iso.accuracy:.4f}")
     macro("MeanT", f"{float(t['T']):.2f}")
+    # claims the prose makes about the comparison, derived rather than typed
+    sig_row = cal[cal.method.str.startswith("sigmoid")].iloc[0]
+    macro("EceSigmoid", f"{sig_row.ece_10bin:.3f}")
+    macro("EceReduction", f"{u.ece_10bin/t.ece_10bin:.1f}")
+    macro("IsoAccCost", f"{(t.accuracy-iso.accuracy)*100:.1f}")
 
     # ======================================================== SUPPLEMENTARY
     from sklearn.feature_extraction.text import CountVectorizer
 
     # S1 reliability diagram --------------------------------------------------
-    conf_raw = P.max(1); conf_cal = Pc.max(1); correct = (y_pred == y)
+    conf_raw = P.max(1); conf_cal = Pc.max(1); correct = (y_pred == y_all)
     # direction and size of the miscalibration, weighted by band population
     gap, ntot = 0.0, 0
     for lo in np.arange(0, 1, 0.1):
@@ -449,11 +751,18 @@ def main():
 
     # S2 top-K cumulative accuracy -------------------------------------------
     ordr = np.argsort(-Pc, axis=1)
-    topk = [float(np.mean([y[i] in [cls[j] for j in ordr[i][:k]] for i in range(len(y))]))
+    topk = [float(np.mean([y_all[i] in [cls[j] for j in ordr[i][:k]] for i in range(len(y_all))]))
             for k in (1, 2, 3, 5)]
-    per_sub_k = {s: [float(np.mean([y[i] in [cls[j] for j in ordr[i][:k]]
-                                    for i in range(len(y)) if y[i] == s])) for k in (1, 2, 3, 5)]
-                 for s in subs}
+    # Both the mask and the value must come from the pooled space. Selecting with
+    # `y[i]` (by-locus, CSV order) while scoring `y_all[i]`/`ordr[i]` (pooled, fold
+    # order) reads a different locus on each side, which is why K=1 here disagreed
+    # with the per-substrate recall in the main table. K=1 is that recall.
+    _hit = np.array([[y_all[i] in [cls[j] for j in ordr[i][:k]] for k in (1, 2, 3, 5)]
+                     for i in range(len(y_all))])
+    _ya = np.asarray(y_all)
+    per_sub_k = {s: _hit[_ya == s].mean(axis=0).tolist() for s in subs}
+    # percentage forms, for the abstract, where a decimal reads oddly in prose
+    macro("TopTwoPct", f"{topk[1]*100:.1f}"); macro("TopThreePct", f"{topk[2]*100:.1f}")
     macro("TopOne", f"{topk[0]:.3f}"); macro("TopTwo", f"{topk[1]:.3f}")
     macro("TopThree", f"{topk[2]:.3f}")
     fig, ax = plt.subplots(figsize=(8.6, 3.9))
@@ -476,10 +785,50 @@ def main():
     # winner significance uses the Bonferroni-corrected threshold: the winner is
     # the max of 12 components, so the marginal null is anti-conservative.
     from scipy.optimize import brentq
-    SIG_TH = brentq(lambda q: 12*(1-q)**11 - 0.05, 1e-6, 0.999)
-    macro("SigThresh", f"{SIG_TH:.3f}")
-    bins = [(0, SIG_TH), (SIG_TH, .6), (.6, .8), (.8, .95), (.95, 1.01)]
-    lab = ["below\nsignificance", f"{SIG_TH:.2f}-0.60", "0.60-0.80", "0.80-0.95", "0.95-1.00"]
+    # significance is decided on the VOTE COUNTS, Bonferroni-corrected over the
+    # 12 substrates -- not on the normalised probability, which manufactures a
+    # confident winner out of twelve weak votes.
+    ALPHA = 0.05
+    win_pv = PV[np.arange(len(y_all)), Vv.argmax(1)]
+    sig_vote = win_pv < ALPHA/len(subs)
+    macro("SigThresh", f"{ALPHA/len(subs):.5f}")
+
+    # Evidence guard. The p-value asks whether the 12 probabilities are more peaked
+    # than a random split of 1; it cannot ask whether anything was read to produce
+    # the peak. The two rules are largely, but not entirely, disjoint -- the overlap
+    # is emitted below rather than assumed, because the supplement quotes it.
+    MIN_INFORM = 2
+    low_ev = n_inform < MIN_INFORM
+    low_pr = ~sig_vote
+    withheld = low_ev | low_pr
+    macro("MinInform", f"{MIN_INFORM}")
+    macro("LowEvidenceN", f"{int(low_ev.sum())}")
+    macro("LowEvidencePct", f"{100*low_ev.mean():.1f}")
+    macro("LowEvidenceAcc", f"{correct[low_ev].mean()*100:.0f}")
+    macro("WithheldN", f"{int(withheld.sum())}")
+    macro("WithheldPct", f"{100*withheld.mean():.1f}")
+    macro("WithheldAcc", f"{correct[withheld].mean()*100:.0f}")
+    macro("ReportedN", f"{int((~withheld).sum())}")
+    macro("ReportedPct", f"{100*(~withheld).mean():.1f}")
+    macro("ReportedAcc", f"{correct[~withheld].mean():.4f}")
+    macro("WithheldBothN", f"{int((low_ev & low_pr).sum())}")
+    macro("LowPrN", f"{int(low_pr.sum())}")
+
+    # The "dividing by the total manufactures a leader" argument quotes a number for
+    # a locus with nothing in it. Probe the deployed model rather than asserting one:
+    # the normalised leader is well above chance (1/12) but nowhere near 0.5, and the
+    # paper said 0.5 for long enough that it needs to be generated from here on.
+    _null_seq = ",".join(["null"] * 9)
+    _null_raw = pipe_final.predict_proba([_null_seq])[0]
+    _null_votes = np.column_stack([e.predict_proba(
+        pipe_final.named_steps["cv"].transform([_null_seq]))[:, 1]
+        for e in pipe_final.named_steps["vr"].estimators_])[0]
+    macro("NullLeader", f"{_null_raw.max():.2f}")
+    macro("NullVotes", f"{int(round(_null_votes.max()*NTREES_DEPLOYED))}")
+    macro("Chance", f"{1/len(subs):.2f}")
+
+    bins = [(0, .4), (.4, .6), (.6, .8), (.8, .95), (.95, 1.01)]
+    lab = ["below 0.40", "0.40-0.60", "0.60-0.80", "0.80-0.95", "0.95-1.00"]
     accs, cnts = [], []
     for lo, hi in bins:
         m = (conf_cal >= lo) & (conf_cal < hi)
@@ -489,24 +838,158 @@ def main():
     for i, (a_, n_) in enumerate(zip(accs, cnts)):
         ax.annotate(f"{a_*100:.0f}%", (i, a_), textcoords="offset points", xytext=(0, 6),
                     ha="center", fontsize=12, fontweight="bold", color=INK)
-        ax.annotate(f"{n_} loci", (i, 0.02), ha="center", fontsize=10, color="white")
+        ax.annotate(f"{100*n_/len(y_all):.0f}%", (i, 0.02), ha="center", fontsize=10, color="white")
     ax.set_xticks(range(len(bins))); ax.set_xticklabels(lab, fontsize=10)
     ax.set_ylabel("Fraction correct"); ax.set_ylim(0, 1.12)
     ax.grid(True, axis="y", color=RULE, lw=0.6); ax.set_axisbelow(True)
     titled(ax, "Confidence tracks correctness",
-           "loci grouped by the winning calibrated probability; red is the band the $p$-value rejects")
+           "held-out predictions grouped by the winning calibrated probability")
     plt.tight_layout(); plt.savefig(FIG/"figS3_confidence.png"); plt.close()
     macro("HighConfAcc", f"{accs[-1]*100:.1f}"); macro("HighConfN", cnts[-1])
-    macro("BelowSigN", cnts[0]); macro("BelowSigAcc", f"{accs[0]*100:.0f}")
+    macro("HighConfPct", f"{100*cnts[-1]/len(y_all):.1f}")
+    # LaTeX control sequences are letters only, so the bands are named, not numbered
+    for _i, _nm in enumerate(("Lowest", "Low", "Mid", "High", "Highest")):
+        macro(f"BandAcc{_nm}", f"{accs[_i]*100:.0f}")
+        macro(f"BandN{_nm}", f"{cnts[_i]}")
+        macro(f"BandPct{_nm}", f"{100*cnts[_i]/len(y_all):.1f}")
+    macro("BelowSigN", f"{int(low_pr.sum())}")
+    macro("BelowSigPct", f"{100*low_pr.mean():.1f}")
+    macro("BelowSigAcc", f"{correct[low_pr].mean()*100:.0f}")
+    macro("AboveSigAcc", f"{correct[sig_vote].mean()*100:.1f}")
+    macro("SigRateHeldOut", f"{100*sig_vote.mean():.1f}")
+
+    # how the vote p-values order the substrates -- the behaviour the supplement claims
+    _srt = np.sort(PV, axis=1)
+    def _sci(v):
+        e = int(np.floor(np.log10(v))) if v > 0 else 0
+        return f"{v/10**e:.0f}\\times10^{{{e}}}"
+    macro("PvWinnerMed", _sci(float(np.median(_srt[:, 0]))))
+    macro("PvRunnerMed", f"{np.median(_srt[:, 1]):.3f}")
+    macro("PvWinnerSmallest", f"{100*np.mean(_srt[:, 0] < _srt[:, 1]):.1f}")
+    macro("PvCorrectMed", _sci(float(np.median(_srt[correct, 0]))))
+    macro("PvWrongMed", f"{np.median(_srt[~correct, 0]):.2f}")
+    _w = _srt[:, 0]
+    macro("PvBandLowAcc",  f"{correct[_w < 1e-30].mean()*100:.1f}")
+    macro("PvBandHighAcc", f"{correct[_w >= 0.05].mean()*100:.1f}")
+    # the served probabilities are normalised; the p-values read the raw votes.
+    # normalisation and the temperature step are both monotone and applied to all
+    # twelve alike, so neither can reorder -- meaning the p-value always describes
+    # the substrate the probabilities rank first. Measured, not assumed.
+    macro("RankAgree", f"{100*np.mean(Vv.argmax(1) == Pc.argmax(1)):.1f}")
+
+    # S3b evidence guard: what the model claims vs what it delivers, by how many
+    # tokens it could actually read. Pooled over all 25 RSKF runs, because the
+    # one-token group is small in any single split (15 loci) and the threshold
+    # decision rests on it.
+    EV, CR, PM = [], [], []
+    for seed in (42, 43, 44, 45, 46):
+        sk = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        for fold, (tr, te) in enumerate(sk.split(X, y)):
+            z = np.load(ROOT/f"artifacts/predictions/{DEPLOYED}/r{seed}_f{fold}/probs_test.npz",
+                        allow_pickle=True)
+            c_ = [str(c) for c in z["classes"]]
+            pc = apply_temperature(z["probs"], T)
+            fv = set(t for i in tr for t in tok_cpu_v2(X[i]))
+            EV.append(np.array([sum(1 for t in tok_cpu_v2(X[i]) if t != "null" and t in fv)
+                                for i in te]))
+            CR.append(np.array(c_)[pc.argmax(1)] == y[te]); PM.append(pc.max(1))
+    ev_p = np.concatenate(EV); cr_p = np.concatenate(CR); pm_p = np.concatenate(PM)
+    macro("PooledN", f"{len(ev_p):,}".replace(",", "{,}"))
+
+    groups = [(1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5"), (6, "$\\geq$6")]
+    g_acc, g_conf, g_n = [], [], []
+    for v, _ in groups:
+        m = (ev_p == v) if v < 6 else (ev_p >= 6)
+        g_acc.append(float(cr_p[m].mean())); g_conf.append(float(pm_p[m].mean()))
+        g_n.append(int(m.sum()))
+    fig, ax = plt.subplots(figsize=(8.6, 4.0))
+    xs = np.arange(len(groups))
+    ax.bar(xs-0.19, g_conf, width=0.36, color=SLATE)
+    ax.bar(xs+0.19, g_acc, width=0.36, color=[ROSE]+[TEAL]*(len(groups)-1))
+    ax.annotate("", xy=(0.19, g_acc[0]), xytext=(0.19, g_conf[0]),
+                arrowprops=dict(arrowstyle="<->", color=ROSE, lw=1.6))
+    # sits in the headroom above the first pair, not across the neighbouring bars
+    # short label beside the arrow; the caption carries the sentence
+    ax.annotate(f"{(g_conf[0]-g_acc[0])*100:.0f} pts",
+                (0.28, (g_acc[0]+g_conf[0])/2), ha="left", va="center",
+                fontsize=10.5, color=ROSE, fontweight="bold")
+
+    for i, n_ in enumerate(g_n):
+        ax.annotate(f"{100*n_/len(ev_p):.0f}%", (i, 0.02), ha="center", fontsize=9.5, color="white")
+    ax.set_xticks(xs); ax.set_xticklabels([lab for _, lab in groups])
+    ax.set_xlabel("Informative tokens the model could read")
+    ax.set_ylabel("Probability"); ax.set_ylim(0, 1.18)
+    ax.grid(True, axis="y", color=RULE, lw=0.6); ax.set_axisbelow(True)
+    # above the bars, not over the n= labels sitting on the axis
+    # explicit handles: the accuracy series is teal except the withheld group,
+    # so letting matplotlib pick the first colour would imply all of it is red
+    ax.legend(handles=[Patch(facecolor=SLATE, label="confidence the model states"),
+                       Patch(facecolor=TEAL,  label="accuracy it achieves"),
+                       Patch(facecolor=ROSE,  label="withheld by the evidence rule")],
+              loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.04))
+    titled(ax, "One token is not enough to justify a claim",
+           "pooled over all 25 runs; the bars match from two tokens onward")
+    plt.tight_layout(); plt.savefig(FIG/"figS3b_evidence.png"); plt.close()
+
+    rng = np.random.default_rng(0)
+    def gap_ci(v):
+        m = (ev_p == v)
+        d = [rng.choice(cr_p[m], m.sum(), replace=True).mean()
+             - rng.choice(pm_p[m], m.sum(), replace=True).mean() for _ in range(8000)]
+        return np.quantile(d, .025), np.quantile(d, .975)
+    lo1, hi1 = gap_ci(1); lo2, hi2 = gap_ci(2)
+    macro("EvOneN", g_n[0]);  macro("EvOneAcc", f"{g_acc[0]*100:.1f}")
+    macro("EvOneConf", f"{g_conf[0]*100:.1f}"); macro("EvOneGap", f"{(g_conf[0]-g_acc[0])*100:.0f}")
+    macro("EvOneCI", f"[{lo1:+.3f}, {hi1:+.3f}]")
+    macro("EvTwoN", g_n[1]);  macro("EvTwoAcc", f"{g_acc[1]*100:.1f}")
+    macro("EvTwoConf", f"{g_conf[1]*100:.1f}")
+    macro("EvTwoCI", f"[{lo2:+.3f}, {hi2:+.3f}]")
+    # what a stricter cut would cost: loci it would suppress that are still usable
+    m3 = ev_p < 3
+    macro("EvThreeN", f"{m3.sum()}"); macro("EvThreePct", f"{100*m3.mean():.1f}")
+    macro("EvThreeAcc", f"{cr_p[m3].mean()*100:.1f}")
+    # the same rule applied to the unlabelled pre-training corpus. Only tokenisation
+    # is needed, not inference: the guard counts readable genes, it does not use
+    # the probabilities. Vocabulary here is the deployed model's, since that is
+    # what a user actually runs against.
+    import gzip
+    dep_vocab = set(joblib.load(ROOT/"artifacts/final_model_v2.pkl")
+                    ["pipeline"].named_steps["cv"].get_feature_names_out())
+    n_corpus, n_thin = 0, 0
+    with gzip.open(ROOT/"data/unsupervised_corpus.txt.gz", "rt") as fh:
+        for line in fh:
+            n_corpus += 1
+            n_inf_u = sum(1 for t in tok_cpu_v2(line.strip().replace(" ", ","))
+                          if t != "null" and t in dep_vocab)
+            n_thin += (n_inf_u < MIN_INFORM)
+    macro("UnsupCorpusSize", f"{n_corpus:,}".replace(",", "{,}"))
+    macro("UnsupSuppressPct", f"{100*n_thin/n_corpus:.1f}")
+
+    # the two views of the same corpus: normalised vector vs raw votes
+    _lines = [l.strip().replace(" ", ",") for l in
+              gzip.open(ROOT/"data/unsupervised_corpus.txt.gz", "rt")]
+    _Zu = pipe_final.named_steps["cv"].transform(_lines)
+    _Vu = np.column_stack([e.predict_proba(_Zu)[:, 1]
+                           for e in pipe_final.named_steps["vr"].estimators_])
+    _PVu = binom.sf(np.rint(_Vu*NTREE).astype(int) - 1, NTREE, 0.5)
+    _Nu = apply_temperature(pipe_final.predict_proba(_lines), T)
+    macro("UnsupSigVotes", f"{100*np.mean(_PVu.min(1) < ALPHA/len(subs)):.0f}")
+    macro("UnsupSigNorm",  f"{100*np.mean(_Nu.max(1) > 0.392401):.0f}")
 
     # S4 out-of-vocabulary proportion vs correctness ---------------------------
-    oovs = np.zeros(len(X))
-    for fold, (tr, te) in enumerate(skf.split(X, y)):
-        cv = CountVectorizer(tokenizer=tok_cpu_v2, token_pattern=None, lowercase=False)
-        cv.fit(X[tr]); V = set(cv.vocabulary_)
-        for i in te:
-            tk = tok_cpu_v2(X[i])
-            oovs[i] = sum(1 for t in tk if t not in V)/max(len(tk), 1)
+    # measured against each fold's own training vocabulary, and pooled over the
+    # same 5x5 protocol as the predictions it is compared against
+    oov_list = []
+    for seed in REPS:
+        sk = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        per_rep = []
+        for fold, (tr, te) in enumerate(sk.split(X, y)):
+            cv = CountVectorizer(tokenizer=tok_cpu_v2, token_pattern=None, lowercase=False)
+            cv.fit(X[tr]); V = set(cv.vocabulary_)
+            per_rep.append(np.array([sum(1 for t in tok_cpu_v2(X[i]) if t not in V)
+                                     / max(len(tok_cpu_v2(X[i])), 1) for i in te]))
+        oov_list.append(np.concatenate(per_rep))
+    oovs = np.concatenate(oov_list)
     ob = [(0, .001), (.001, .05), (.05, .15), (.15, 1.01)]
     olab = ["0%", "0-5%", "5-15%", ">15%"]
     oacc = [float(correct[(oovs >= lo) & (oovs < hi)].mean()) if ((oovs >= lo) & (oovs < hi)).sum() else 0
@@ -517,7 +1000,7 @@ def main():
     for i, (a_, n_) in enumerate(zip(oacc, on)):
         ax.annotate(f"{a_*100:.0f}%", (i, a_), textcoords="offset points", xytext=(0, 6),
                     ha="center", fontsize=12, fontweight="bold", color=INK)
-        ax.annotate(f"{n_} loci", (i, 0.02), ha="center", fontsize=10, color="white")
+        ax.annotate(f"{100*n_/len(y_all):.0f}%", (i, 0.02), ha="center", fontsize=10, color="white")
     ax.set_xticks(range(len(ob))); ax.set_xticklabels(olab)
     ax.set_ylabel("Fraction correct"); ax.set_ylim(0, 1.12)
     ax.set_xlabel("Share of the locus's tokens unseen in training")
@@ -526,41 +1009,24 @@ def main():
            "loci whose genes the training fold never saw are predicted less reliably")
     plt.tight_layout(); plt.savefig(FIG/"figS4_oov.png"); plt.close()
     macro("ZeroOovN", on[0]); macro("ZeroOovAcc", f"{oacc[0]*100:.0f}")
+    macro("ZeroOovPct", f"{100*on[0]/len(y_all):.0f}")
 
-    # S6 the calibration objective ------------------------------------------
+    # The temperature is chosen by minimising calibration error, not log-loss.
+    # No figure is emitted: the finding is one sentence in the supplement, and an
+    # orphan plot in paper/Fig would be flagged as generated-but-never-shown.
     from src.calibration.temperature import apply_temperature as _appT, _nll as _NLL
-    yi = np.array([cls.index(v) for v in y])
+    yi = np.array([cls.index(v) for v in y_all])
     Ts = np.linspace(0.35, 1.6, 60)
     nll = [_NLL(_appT(P, t), yi) for t in Ts]
     eces = []
     for t in Ts:
-        Q=_appT(P,t); c=Q.max(1); cr=(np.array(cls)[Q.argmax(1)]==y); e=0
+        Q=_appT(P,t); c=Q.max(1); cr=(np.array(cls)[Q.argmax(1)]==y_all); e=0
         for lo in np.arange(0,1,.1):
             m=(c>=lo)&(c<lo+.1)
             if m.sum(): e+=m.sum()*abs(cr[m].mean()-c[m].mean())
         eces.append(e/len(c))
     t_nll, t_ece = Ts[int(np.argmin(nll))], Ts[int(np.argmin(eces))]
     macro("Tnll", f"{t_nll:.2f}"); macro("Tece", f"{t_ece:.2f}")
-    fig, ax = plt.subplots(figsize=(8.6, 3.9))
-    ax.plot(Ts, eces, color=TEAL, lw=2.6, label="calibration error (ECE)")
-    ax.axvline(t_ece, color=TEAL, ls=(0,(4,3)), lw=1.4)
-    ax.annotate(f"ECE best\nT={t_ece:.2f}", (t_ece, max(eces)*0.80), color=TEAL,
-                fontsize=10.5, ha="center", fontweight="bold")
-    ax.set_xlabel("Temperature $T$   (below 1 sharpens, above 1 flattens)")
-    ax.set_ylabel("Calibration error", color=TEAL)
-    ax.tick_params(axis="y", colors=TEAL)
-    ax2 = ax.twinx(); ax2.plot(Ts, nll, color=AMBER, lw=2.6, label="log-loss (NLL)")
-    ax2.axvline(t_nll, color=AMBER, ls=(0,(4,3)), lw=1.4)
-    ax2.annotate(f"NLL best\nT={t_nll:.2f}", (t_nll, max(nll)*0.995), color=AMBER,
-                 fontsize=10.5, ha="center", fontweight="bold")
-    ax2.set_ylabel("Log-loss", color=AMBER); ax2.tick_params(axis="y", colors=AMBER)
-    ax2.spines["top"].set_visible(False)
-    ax.axvline(1.0, color=SLATE, lw=1.0)
-    ax.annotate("no correction", (1.0, min(eces)), xytext=(6,4),
-                textcoords="offset points", fontsize=9.5, color=SLATE)
-    titled(ax, "The two objectives disagree, and only one of them calibrates",
-           "fitting the temperature by log-loss barely sharpens; fitting by calibration error does")
-    plt.tight_layout(); plt.savefig(FIG/"figS6_objective.png"); plt.close()
 
     # S5 training cost --------------------------------------------------------
     tt = pfm.copy(); tt["fam"] = tt.shorthand.apply(family_of)
@@ -575,7 +1041,17 @@ def main():
     ax.grid(True, axis="x", color=RULE, lw=0.6); ax.set_axisbelow(True)
     titled(ax, "What each family costs to train", "mean wall-clock seconds for one train/test run")
     plt.tight_layout(); plt.savefig(FIG/"figS5_cost.png"); plt.close()
-    macro("CostCounts", f"{agg[[i for i in agg.index if i.startswith('Counts')][0]]:.0f}")
+    # Name the deployed family: there are two "Counts" groups now, and taking the
+    # first of a series sorted by time silently picks whichever is cheaper.
+    _counts_fam = "Counts + ExtraTrees"
+    assert _counts_fam in agg.index, sorted(agg.index)
+    macro("CostCounts", f"{agg[_counts_fam]:.0f}")
+    # The supplement used to call this "one to two orders of magnitude". It is a small
+    # single-digit multiple, so the ratio is emitted from the same series the figure
+    # plots rather than described in prose.
+    _deep = agg[[i for i in agg.index if i.startswith("Deep")]]
+    macro("CostDeepMin", f"{_deep.min()/agg[_counts_fam]:.1f}")
+    macro("CostDeepMax", f"{_deep.max()/agg[_counts_fam]:.1f}")
 
     # supplementary tables ----------------------------------------------------
     full = lb.copy()
@@ -611,9 +1087,12 @@ def main():
         "% Generated by scripts/07c_build_paper_figures.py. Do not edit.\n" +
         "".join(f"\\newcommand{{\\{k}}}{{{v}}}\n" for k, v in sorted(MACROS.items())))
 
-    print(f"[07c] held-out accuracy {acc:.4f}")
+    print(f"[07c] held-out accuracy {np.mean(foldacc):.4f} +/- {np.std(foldacc, ddof=1):.4f} over {len(foldacc)} fits ({len(y_all):,} predictions)")
     print(f"[07c] signature genes {TH}/{TE} = {TH/TE*100:.1f}%  ({len(X)-TE} loci not answerable)")
-    print(f"[07c] wrote 11 figures and {len(MACROS)} macros to paper/generated/")
+    # counted, not asserted: a hardcoded figure count silently goes stale
+    # the first time a panel is added or dropped
+    print(f"[07c] wrote {len(list(FIG.glob('*.png')))} figures and "
+          f"{len(MACROS)} macros to paper/generated/")
 
 
 if __name__ == "__main__":

@@ -57,6 +57,12 @@ def main():
     canon = build_canon(ROOT/"data/Literature_Data_fam_substrate_mapping.tsv", SUBSTRATE_ALIAS)
     A("lit_db_substrate_family_pairs_after_alias_collapse", sum(len(c) for c in canon.values()))
 
+    # docs/ holds generated output and is not tracked, so on a fresh clone these
+    # directories do not exist yet. Create them rather than failing four steps into
+    # the documented reproduction path.
+    for d in ("docs/tables", "docs/figures"):
+        (ROOT/d).mkdir(parents=True, exist_ok=True)
+
     # 1. Headline leaderboard from per_fold_metrics
     print("[07] Headline leaderboard ...")
     pfm = pd.read_csv(ROOT/"artifacts/per_fold_metrics.csv") if (ROOT/"artifacts/per_fold_metrics.csv").exists() else \

@@ -1,0 +1,101 @@
+locus_id,sequence,n_genes_in_locus,n_genes_model_recognises,outcome,predicted_substrate,probability
+unsup_rich_001,"3.A.15,null,null,2.A.1,2.A.6,2.A.6,null,null,HisKA,HATPase_c,Trans_reg_C,1.A.16,null,1.B.14,GH0,GH0,MCPsignal,null,null,null,2.A.1",21,11,no substrate beat chance,host glycan,0.6068
+unsup_rich_002,"GT4,9.B.18,null,HTH_3,null,null,3.A.1,null,3.A.1,3.A.1,Trans_reg_C,null,3.A.1,3.A.1,3.A.1,null,null,null,9.B.102",19,11,no substrate beat chance,host glycan,0.4708
+unsup_rich_003,"1.A.33,null,null,3.A.1,3.A.1,3.A.1,2.A.2,null,CBM91,HTH_AraC,HTH_AraC,null,null,null,NIR_SIR_ferr,NIR_SIR,NIR_SIR_ferr,GT8",18,9,call beats chance,xylan,0.8208
+unsup_rich_004,"2.A.24,3.B.1,3.B.1,3.B.1,dCache_1,HATPase_c,0039384,null,HTH_1,9.B.124,null,null,2.A.47,2.A.47,null,HTH_1,null,null,null,9.B.105,null,null,null,HTH_1,2.A.33,null,null,null,CBM5,GH18,Trans_reg_C,GH108,null,HTH_1,null,1.A.33,null,null,2.A.96,3.A.7,null,null,2.A.25",43,17,no substrate beat chance,host glycan,0.5787
+unsup_rich_005,"8.A.59,HTH_AraC,HTH_AraC,3.A.1,3.A.1,SBP_bac_1,GH0,GH43_17,null,null,9.A.40,null,Rrf2,null,null,null,2.A.86",17,10,no substrate beat chance,xylan,0.548
+unsup_rich_006,"GH3,3.A.1,3.A.1,3.A.1,3.A.1,3.A.1,MarR,null,null,null,GH130,null,GH130,null,null,null,null,null,2.A.89,8.A.59",20,10,no substrate beat chance,beta-mannan,0.5141
+unsup_rich_007,"9.B.74,9.B.74,HisKA,HATPase_c,HisKA,HATPase_c,9.A.24,3.A.7,null,dCache_1,MCPsignal,1.A.11,null,3.A.1,3.A.1,1.E.14,2.A.122,null,null,null,CE4",21,11,no substrate beat chance,host glycan,0.3443
+unsup_rich_008,"2.A.1,PfkB,null,LacI,9.B.186,5.A.3,null,null,null,2.A.1,null,null,3.A.1,3.A.1,3.A.1,3.A.1,3.A.1,0037176,2.A.42,Aminotran_1_2,GGDEF,EAL,2.A.23,null,PfkB,EAL,9.B.121,2.A.1,9.B.126,HTH_1,null,GerE,GH24,null,null,GH37,5.B.3,GntR,SIS,PfkB,2.A.13",41,17,no substrate beat chance,alginate,0.3486
+unsup_rich_009,"GH51,GH43_5,HTH_AraC,1.B.14,null,null,GH43_4,GH43_4,GH51,GH43_19",10,9,no substrate beat chance,arabinogalactan,0.5434
+unsup_rich_010,"2.A.3,Hemerythrin,2.A.7,HTH_AraC,HTH_AraC,null,DUF24,CBM50,null,null,null,HTH_AraC,HTH_AraC,GH42,2.A.1,null,null,1.B.33,9.B.22,null,null,null,3.A.1,3.A.1,3.A.1,3.A.1",26,16,no substrate beat chance,galactan,0.3023
+unsup_rich_011,"9.B.1,null,Pribosyltran,TPR_2,TPR_2,TPR_1,TPR_1,null,null,9.B.18,null,null,null,null,GT2,GT2,null,null,null,GT4,null,GT4,null,null,null,GT2",26,10,call beats chance,beta-glucan,0.7081
+unsup_rich_012,"GH29,HTH_AraC,HTH_AraC,null,GH2,null,GH29,null,null,1.B.14,null,null,GH30_3,GH30_3,GH3",15,11,no substrate beat chance,beta-glucan,0.5038
+unsup_rich_013,"1.A.62,2.A.102,null,null,3.A.1,GH77,null,null,9.B.34,GAF,HisKA,HATPase_c,Response_reg,Response_reg,Response_reg,CheR_N,CheR,CheB_methylest,GH6",19,13,no substrate beat chance,alpha-glucan,0.3415
+unsup_rich_014,"GH43_4,3.A.1,3.A.1,3.A.1,GH43_26,null,GH51,HTH_5,GH43_4,null,HTH_AraC,HTH_AraC,9.B.141",13,12,no substrate beat chance,arabinogalactan,0.7088
+unsup_rich_015,"1.B.14,null,2.A.6,null,null,null,null,null,3.A.1,3.A.1,1.B.52,2.A.21,1.B.52,null,null,2.A.98,null,null,GntR,null,GH31,2.A.21,1.B.14,2.A.4,GH16_3,1.B.14,9.B.34,null,GH3,2.A.1,GH1,LacI,2.A.1,3.A.1,3.A.1,null,3.D.4,3.D.4",38,23,no substrate beat chance,beta-glucan,0.5977
+unsup_rich_016,"2.A.26,null,null,null,4.A.1,GH170,SIS,4.A.1,HTH_6,null,null,null,3.A.1,null,3.A.1,1.C.90,9.B.14,null,3.A.1,HTH_3,3.A.1,3.A.1,3.A.1,SBP_bac_5,null,null,null,Peptidase_M23,3.A.1,SBP_bac_1,3.A.1,3.A.1,null,null,null,null,2.A.1,HTH_AraC,HTH_AraC,8.A.59,3.A.1,null,null,null,null,3.A.1,null,null,null,null,4.C.1,null,null,3.A.1,null,null,null,null,null,4.A.1,null,null,Mga,4.A.5,4.A.5,4.A.5",66,33,no substrate beat chance,host glycan,0.3096
+unsup_rich_017,"3.A.1,3.A.1,1.E.43,3.A.1,3.A.1,HTH_11,null,Sigma70_r2,Sigma70_r4_2,null,null,3.A.1,null,null,null,null,null,CE14",18,10,no substrate beat chance,xylan,0.5656
+unsup_rich_018,"GH1,3.A.1,3.A.1,3.A.1,0044258,LacI,null,CBM32,GH158,CBM32,CBM32,GH55,null,null,null,3.A.1",16,10,no substrate beat chance,beta-glucan,0.7116
+unsup_rich_019,"9.B.160,GH2,null,null,null,null,null,3.D.1,3.D.1,3.D.1,3.D.1,null,3.D.1,3.D.1,3.D.1,3.D.1,3.D.1,3.D.1,3.D.1,3.D.1,3.D.1",21,14,call beats chance,host glycan,0.8866
+unsup_rich_020,"GH13_10,GH1,null,null,FHA,GH13_26,GH13_11,null,null,null,null,3.A.1,3.A.1,null,GT1,CE4,GT2",17,8,no substrate beat chance,beta-glucan,0.4323
+unsup_rich_021,"3.A.18,null,null,null,GT104,null,1.A.30,1.A.30,2.A.5,8.A.1,3.A.1,3.A.1,null,Pyr_redox_2,2.A.53,Rhodanese,null,9.B.102,9.B.102,HTH_5,null,null,2.A.6,2.A.6,null,null,1.B.76,null,9.B.62,null,Trans_reg_C,HisKA,HATPase_c,null,null,3.A.3,HMA,null,5.A.1",39,17,no substrate beat chance,host glycan,0.5688
+unsup_rich_022,"3.A.1,null,3.A.1,3.A.1,3.A.1,1.B.19,9.B.160,3.A.1,GAF,PHY,null,1.B.14,HTH_1,2.A.16,3.A.5,null,null,GT2",18,8,no substrate beat chance,beta-glucan,0.7198
+unsup_rich_023,"1.B.14,2.A.7,GH105,CE12,PL11_1,null,GH106,CE12,GH2,GH28,null,null,Crp,null,2.A.6,2.A.6,null,null,null,3.A.1",20,12,call beats chance,pectin,0.9325
+unsup_rich_024,"9.B.102,null,GH5_2,CBM3,null,HisKA,HATPase_c,Trans_reg_C,GH30_8,GH43_16,CBM6,GT2,null,GT2,null,null,null,null,2.A.8",19,14,no substrate beat chance,xylan,0.4198
+unsup_rich_025,"CBM50,2.A.1,null,null,null,null,3.A.1,3.A.1,GerE,null,3.A.1,3.A.1,3.A.1,HTH_DeoR,GH4,GH38,null,null,GH125,GH20,PfkB,HATPase_c,null,TetR_N,2.A.6,null,null,null,3.A.1,null,Peripla_BP_2,3.A.1,3.A.1,null,2.A.49,GT35,null,Sigma70_r4_2,GH112,MarR,SBP_bac_1,3.A.1,3.A.1,null,LacI,GH95",46,35,no substrate beat chance,host glycan,0.4689
+unsup_rich_026,"3.A.1,3.A.1,3.A.1,3.A.1,null,null,HisKA,HATPase_c,Trans_reg_C,3.A.3,null,TetR_N,null,null,null,GT4,GT4",17,15,no substrate beat chance,host glycan,0.4481
+unsup_rich_027,"3.D.1,null,null,3.A.1,Response_reg,ANTAR,null,1.B.25,3.A.1,3.A.1,3.A.1,null,null,null,null,null,GH11",17,9,no substrate beat chance,chitin,0.5007
+unsup_rich_028,"2.A.7,GT51,null,3.A.3,null,null,null,GT35,GH77,3.A.1,3.A.1,3.A.1,null,LacI,2.A.115",15,9,call beats chance,alpha-glucan,0.838
+unsup_rich_029,"3.A.7,3.A.7,3.A.7,3.A.7,null,3.A.7,null,3.A.7,3.A.7,3.A.7,3.A.7,null,GH23",13,9,no substrate beat chance,host glycan,0.4198
+unsup_rich_030,"2.A.1,2.A.2,null,null,null,3.A.1,3.A.1,3.A.1,3.A.1,null,null,null,TetR_N,null,AA3_2",15,9,no substrate beat chance,xylan,0.3502
+unsup_moderate_001,"2.A.66,3.A.1,3.A.1,GH18,3.A.1,3.A.1",6,6,no substrate beat chance,pectin,0.5502
+unsup_moderate_002,"GH23,null,null,null,null,3.A.7,null,0042628,HTH_3,3.A.7,3.A.7,null,3.A.7,null,null,null,3.A.7,null,3.A.7",19,7,no substrate beat chance,alpha-mannan,0.3642
+unsup_moderate_003,"PL7_5,null,null,PL7_5,1.B.14,null,null,8.A.59,2.A.21,GH23",10,5,call beats chance,alginate,0.7539
+unsup_moderate_004,"2.A.103,HTH_AraC,HTH_AraC,null,GT4",5,5,no substrate beat chance,beta-glucan,0.4241
+unsup_moderate_005,"2.A.27,HTH_11,8.A.7,null,GH13_11,3.A.1,3.A.1,3.A.1,null,5.A.1",10,5,no substrate beat chance,alpha-glucan,0.921
+unsup_moderate_006,"GT4,null,null,null,1.B.23,3.A.1,3.A.1,null,3.A.1",9,4,no substrate beat chance,beta-glucan,0.5888
+unsup_moderate_007,"2.A.86,null,9.B.14,null,null,1.A.8,null,GH106,9.A.40,null,GH95",11,4,no substrate beat chance,host glycan,0.3854
+unsup_moderate_008,"GH2,null,2.A.3,2.A.3,null,GH63,null,null,null,null,3.A.1,3.A.1",12,5,no substrate beat chance,host glycan,0.6639
+unsup_moderate_009,"GH13_31,2.A.2,null,PadR,2.A.66",5,4,call beats chance,alpha-glucan,0.6743
+unsup_moderate_010,"GH3,GH3,3.A.1,3.A.1,3.A.1",5,5,call beats chance,chitin,0.5851
+unsup_moderate_011,"3.A.1,3.A.1,null,null,GT2,null,null,GT2,GT2,GT2",10,6,no substrate beat chance,beta-glucan,0.7277
+unsup_moderate_012,"9.B.1,null,null,HTH_10,null,GT9,null,null,null,null,GT30,Aminotran_1_2,null,Rhodanese,9.B.104,null,null,2.A.66,null,null,2.A.16,null,2.A.7",23,4,no substrate beat chance,pectin,0.7138
+unsup_moderate_013,"3.A.2,3.A.2,null,null,3.A.2,3.A.2,3.A.2,3.A.2,null,null,CE4",11,7,call beats chance,alpha-glucan,0.732
+unsup_moderate_014,"2.A.1,GH32,2.A.1,LacI,null,null,null,GntR,2.A.14",9,5,no substrate beat chance,alpha-glucan,0.7019
+unsup_moderate_015,"GH18,null,null,Nitroreductase,Nitroreductase,null,2.A.40,null,null,null,2.A.4,PALP,null,null,3.A.1",15,7,call beats chance,host glycan,0.6742
+unsup_moderate_016,"2.A.8,null,null,2.A.95,null,CBM48,GH13_9,CBM48,GH13_11,null,GT5,GT35,null,null,1.B.11",15,7,call beats chance,alpha-glucan,0.9463
+unsup_moderate_017,"GT30,null,null,null,HTH_1,2.A.7,null,null,HTH_1,null,3.A.1",11,4,no substrate beat chance,host glycan,0.4099
+unsup_moderate_018,"GT2,GT2,null,2.A.66,2.A.66,GT4,null,GT2",8,6,call beats chance,beta-glucan,0.8427
+unsup_moderate_019,"9.B.97,null,null,null,CSD,null,1.B.1,null,HD,null,null,2.A.7,null,null,9.B.34,null,null,null,GerE,3.A.6,3.A.6,3.A.6,3.A.6,3.A.6,null,null,null,null,3.A.6,3.A.6,null,3.A.6,null,null,null,9.B.102,null,GH13_5",38,6,no substrate beat chance,alpha-glucan,0.5405
+unsup_moderate_020,"3.A.1,3.A.1,3.A.1,GH36",4,4,call beats chance,galactan,0.8337
+unsup_moderate_021,"1.B.14,null,null,GH144,null,GH3,GH43_28,CBM32,null,null,null,1.A.23",12,6,call beats chance,pectin,0.5354
+unsup_moderate_022,"3.A.1,3.A.1,3.A.1,null,null,null,null,GT2,2.A.25,null,9.B.97,null,9.B.18",13,5,no substrate beat chance,beta-glucan,0.6715
+unsup_moderate_023,"GH31,TetR_N,2.A.1",3,4,no substrate beat chance,alpha-glucan,0.4808
+unsup_moderate_024,"9.B.106,FHA,FHA,null,null,2.A.85,HTH_1,GT2,3.A.1,3.A.1,3.A.1,3.A.1",12,6,no substrate beat chance,beta-glucan,0.7992
+unsup_moderate_025,"1.A.8,null,HTH_AraC,GH35",4,4,no substrate beat chance,host glycan,0.4689
+unsup_moderate_026,"1.B.14,3.A.1,null,null,null,null,GT2,null,GT2,GT4,CBM50",11,5,call beats chance,beta-glucan,0.8746
+unsup_moderate_027,"2.A.37,GH13_39,GT35,GT5,null,null,GH13_9,null,1.A.11",9,4,call beats chance,alpha-glucan,0.9969
+unsup_moderate_028,"GH13_14,null,null,4.A.2,HTH_11,HTH_11,4.A.2,null,null,null,null,8.A.7,8.A.8,4.A.1",14,4,no substrate beat chance,alpha-glucan,0.6774
+unsup_moderate_029,"GH64,GerE,HTH_AraC,HTH_AraC,null,null,2.A.28",7,6,no substrate beat chance,host glycan,0.4763
+unsup_moderate_030,"9.B.34,null,GH23,null,null,2.A.38,2.A.38,null,null,null,CBM50,3.A.11,null,null,null,null,4.C.1,null,null,null,1.B.39,null,null,null,Trans_reg_C,1.I.1",26,6,no substrate beat chance,host glycan,0.5262
+unsup_sparse_001,"8.A.1,null,null,null,3.A.2,null,null,null,null,9.B.157,9.B.157,null,null,2.A.103,GH103,GH23,null,null,5.A.1,null,null,null,3.A.1,9.B.153",24,3,no substrate beat chance,host glycan,0.5807
+unsup_sparse_002,"8.A.5,LacI,GH5_28,GH5_22",4,3,no substrate beat chance,beta-glucan,0.5444
+unsup_sparse_003,"3.A.1,3.A.1,1.I.1,null,null,3.A.1,FHA,null,GH114",9,3,no substrate beat chance,host glycan,0.4676
+unsup_sparse_004,"2.A.1,null,null,null,null,null,PL27",7,2,no substrate beat chance,alpha-glucan,0.3114
+unsup_sparse_005,"2.A.6,2.A.6,null,ACT,null,GT2",6,3,call beats chance,beta-glucan,0.8102
+unsup_sparse_006,"1.B.52,null,GH5_25,GT84,GH94",5,3,call beats chance,beta-glucan,0.8923
+unsup_sparse_007,"CBM9,3.A.1,null,null,null,null,null,9.B.210,null,2.A.21,9.A.63",11,3,no substrate beat chance,pectin,0.3922
+unsup_sparse_008,"GH13_5,null,3.A.3",3,2,call beats chance,alpha-glucan,0.9676
+unsup_sparse_009,"3.A.25,2.A.7,null,null,3.A.1,null,null,null,CE9",9,3,call beats chance,host glycan,0.8872
+unsup_sparse_010,"2.A.1,null,null,GH1,HHA,null,3.D.6,3.D.6,3.D.6,3.D.6,3.D.6,3.D.6,HhH-GPD,null,2.A.17",15,2,no substrate beat chance,beta-glucan,0.507
+unsup_sparse_011,"GT28,null,null,null,HTH_3,null,2.A.3,null,2.A.1",9,3,no substrate beat chance,arabinogalactan,0.5009
+unsup_sparse_012,"1.B.35,null,CE0,null,null,null,GT2",7,2,no substrate beat chance,beta-glucan,0.5958
+unsup_sparse_013,"4.C.1,null,9.B.96,9.B.96,9.B.96,9.B.96,null,9.B.96,TetR_N,null,null,null,GT4",13,3,no substrate beat chance,beta-glucan,0.3625
+unsup_sparse_014,"3.A.1,3.A.1,null,1.B.12,null,null,0042628,2.A.95,null,2.A.111,null,null,GH23",13,2,no substrate beat chance,host glycan,0.7949
+unsup_sparse_015,"GT2,null,GT1,null,null,null,GT1,null,ACT,null,null,null,3.B.1",13,2,no substrate beat chance,beta-glucan,0.8449
+unsup_sparse_016,"3.A.1,GntR,GH0,null,2.A.51",5,2,no substrate beat chance,alginate,0.3599
+unsup_sparse_017,"GT2,null,null,null,9.B.142,null,GT2",7,2,call beats chance,beta-glucan,0.9094
+unsup_sparse_018,"GH10,null,null,null,3.D.7,null,null,null,3.A.2,3.A.2",10,3,call beats chance,xylan,0.693
+unsup_sparse_019,"CBM50,3.A.1,2.A.20,null,null,null,2.A.6,2.A.6",8,3,no substrate beat chance,host glycan,0.7405
+unsup_sparse_020,"CE9,null,GntR,9.B.146",4,2,call beats chance,host glycan,0.9931
+unsup_sparse_021,"GH13_7,null,GH53,3.A.1",4,3,call beats chance,alpha-glucan,0.8229
+unsup_sparse_022,"CBM12,null,null,null,null,null,3.A.3,null,null,2.A.53",10,2,no substrate beat chance,host glycan,0.3409
+unsup_sparse_023,"GT4,null,null,3.A.4,null,Glucokinase,null,null,null,9.A.15",10,2,no substrate beat chance,beta-glucan,0.6423
+unsup_sparse_024,"GT26,null,null,2.A.38,null,GT32",6,2,no substrate beat chance,host glycan,0.3002
+unsup_sparse_025,"CBM6,null,null,2.A.6",4,2,no substrate beat chance,xylan,0.442
+unsup_too_001,"9.B.146,null,null,2.A.103,GT28,null,null,null,null,3.A.1,null,null,null,null,1.A.14",15,1,withheld (fewer than 2 readable genes),host glycan,0.5644
+unsup_too_002,"2.A.117,null,GT0,null,null,2.A.109,null,1.B.14,null,GH171",10,1,withheld (fewer than 2 readable genes),pectin,0.5611
+unsup_too_003,"CE11,null,null,null,null,null,2.A.3",7,1,withheld (fewer than 2 readable genes),arabinogalactan,0.5284
+unsup_too_004,"GT51,null,null,2.A.6",4,1,withheld (fewer than 2 readable genes),host glycan,0.6198
+unsup_too_005,"CE4,null,null,null,null,null,GH12,null,null,9.B.96,null,9.B.96,null,1.C.113,null,null,CE14",17,1,withheld (fewer than 2 readable genes),chitin,0.4702
+unsup_too_006,"2.A.9,CbiA,null,null,CBM50",5,0,withheld (fewer than 2 readable genes),host glycan,0.5185
+unsup_too_007,"2.A.78,null,GH1",3,1,withheld (fewer than 2 readable genes),beta-glucan,0.5509
+unsup_too_008,"GT4,null,null,null,3.A.4",5,1,withheld (fewer than 2 readable genes),beta-glucan,0.8359
+unsup_too_009,"2.A.1,null,null,HD,null,null,GT0",7,1,withheld (fewer than 2 readable genes),alpha-glucan,0.4138
+unsup_too_010,"GH92,9.B.115,9.B.186",3,1,withheld (fewer than 2 readable genes),host glycan,0.4701
+unsup_too_011,"GT4,null,null,1.E.4",4,1,withheld (fewer than 2 readable genes),beta-glucan,0.8097
+unsup_too_012,"3.A.9,null,null,GT30,null,null,null,3.A.6",8,0,withheld (fewer than 2 readable genes),host glycan,0.4992
+unsup_too_013,"GH23,null,null,null,9.B.27",5,1,withheld (fewer than 2 readable genes),beta-glucan,0.5299
+unsup_too_014,"3.D.10,3.D.10,GT19",3,0,withheld (fewer than 2 readable genes),host glycan,0.536
+unsup_too_015,"GH23,1.A.87",2,0,withheld (fewer than 2 readable genes),host glycan,0.536

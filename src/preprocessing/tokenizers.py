@@ -93,6 +93,10 @@ def tok_cpu_v2(s: str) -> list[str]:
        same way makes "1.B.14.6.1" and "1.B.14" the same transporter rather
        than two unrelated strings.
 
+    Accuracies quoted in rules 2 and 3 below use 0.9183 as their baseline: that
+    is the variant which keeps the bare subfamily index. Dropping it is what
+    gives the deployed model its 0.9177 +/- 0.0146.
+
     2. **Bare subfamily indices are dropped.** Splitting on "_" turns "GH5_4"
        into "GH5" and "4". The family half is the point of the split: it lets
        every GH5 subfamily contribute to a shared GH5 feature instead of each

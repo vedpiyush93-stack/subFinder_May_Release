@@ -32,7 +32,7 @@ Output
 ------
 For each PUL the returned record has: ``predicted`` substrate, ``confidence``
 (the calibrated probability of ``predicted``), full 12-class ``probabilities``,
-Dirichlet-uniform ``p_values``, ``is_significant`` flag (p<0.05), top-K
+per-substrate ``p_values`` from the forest vote counts, ``is_significant`` flag, top-K
 ``signature_genes`` via leave-one-token-out ablation on the CALIBRATED
 probabilities (same protocol as the slides and paper §3.7), plus
 ``oov_proportion`` and ``refuse_to_predict``.

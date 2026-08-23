@@ -1,0 +1,14 @@
+subFinder
+Copyright 2026 The subFinder Authors
+
+This product includes software developed for the manuscript
+"Predicting the substrate of a polysaccharide utilization locus:
+a calibrated, explainable model that reports how confident it is
+and which genes decided the call".
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+The curated CAZy-family-to-substrate mapping in
+data/Literature_Data_fam_substrate_mapping.tsv is compiled from the
+primary literature cited in the manuscript and its supplement; the
+underlying facts belong to those publications.

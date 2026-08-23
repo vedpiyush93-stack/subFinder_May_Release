@@ -6,7 +6,7 @@ editorial judgement. Lit substrate categories with no counterpart in our 12
 classes (lignin, agar, fucoidan, peptidoglycan, polyphenol, etc.) are dropped
 because the model cannot predict them.
 
-After alias collapse, the curated DB defines **394 distinct (substrate, canonical
+After alias collapse, the curated DB defines **395 distinct (substrate, canonical
 CAZy family) pairs** across our 12 output classes.
 """
 SUBSTRATE_ALIAS: dict[str, list[str]] = {
@@ -15,7 +15,7 @@ SUBSTRATE_ALIAS: dict[str, list[str]] = {
     "beta-glucan":     ["beta-glucan", "cellulose", "cellooligosaccharide",
                          "xyloglucan", "beta-glycan"],
     "galactan":        ["beta-galactan", "alpha-galactan"],
-    "arabinogalactan": ["arabinogalactan protein", "arabinan"],
+    "arabinogalactan": ["arabinogalactan", "arabinogalactan protein", "arabinan"],
     "host glycan":     ["host glycan", "human-milk-polysaccharide",
                          "human milk polysaccharide", "sialic-acid",
                          "sialic acid", "fucose"],

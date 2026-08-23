@@ -87,7 +87,7 @@ echo "════════════════════════�
 echo "ALL FT RETRAIN COMPLETE — total wall: $(($(date +%s)-T0))s"
 echo "════════════════════════════════════════════════════════════════════"
 echo
-echo "Next: tell Claude 'retrain done' to run the consolidation pipeline:"
+echo "Next, run the consolidation pipeline:"
 echo "  - 04_benchmark.py + 05_calibrate_best.py"
 echo "  - notebook end-to-end (regen all paper tables + audit + figures)"
 echo "  - 08/09 deck regeneration"

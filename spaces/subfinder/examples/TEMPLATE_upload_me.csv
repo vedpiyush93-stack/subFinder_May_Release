@@ -1,0 +1,8 @@
+locus_id,sequence,note
+alginate_PUL,"1.B.14.12.2,null,null,null,null,PfkB,2.A.1.14.25,null,PL17_2|PL17,PL6|PL6_1,null","alginate at 1.00, driven by PL17, PL6, PfkB"
+starch_PUL,"1.B.14.6.1,8.A.46.1.5,null,GH31,GH97","alpha-glucan at 1.00, driven by GH97, GH31, 8.A.46"
+xylan_PUL,"1.B.14.6.1,null,CE1,null,GH43_7|GH43_7,GH43_17,GH3,GH43_2|CBM6,HTH_AraC","xylan at 1.00, driven by GH43, CBM6, CE1"
+chitin_PUL,"1.B.25.1.13,null,GH20","chitin at 1.00, driven by 1.B.25, GH20"
+ambiguous_PUL,"GH16,GH5,null,1.B.14.6.1","galactan 0.62 vs beta-glucan 0.38 - close, read both rows"
+too_thin_PUL,GH20,only 1 gene(s) the model recognises - call withheld
+unannotated_PUL,"null,null,null,null",only 0 gene(s) the model recognises - call withheld

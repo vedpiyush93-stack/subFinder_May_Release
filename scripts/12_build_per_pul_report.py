@@ -124,9 +124,15 @@ print(f"  per-fold vocab sizes: {dict(sorted(fold_train_vocab_size.items()))}")
 print(f"  PULs with OOV > 0: {(oov_per_pul > 0).sum()}/{len(sequences)}  "
       f"(>10%: {(oov_per_pul > 0.10).sum()})")
 
-# Dirichlet-uniform p-value (matches deployed PULPredictor)
+# NOTE (out of date): this script still targets the SUPERSEDED v1 configuration
+# cpu__ET500_log2. The deployed model is cpuV2__ET500_log2, and the p-value it
+# reports is now a binomial test on each substrate's forest votes, not the
+# Dirichlet-uniform expression below -- see src/inference/predict_one.py. The
+# checked-in docs/per_pul_report.html therefore predates the tokenizer
+# refinement, the calibration objective change and the p-value change. Rebuild
+# against v2 before relying on it.
 def p_value_dirichlet_uniform(p: float) -> float:
-    """P(X >= p) where X ~ Beta(1, K-1) under a uniform Dirichlet null."""
+    """SUPERSEDED. P(X >= p) where X ~ Beta(1, K-1) under a uniform Dirichlet null."""
     # P(X >= p) = (1 - p) ** (K - 1)
     return float((1.0 - p) ** (n_classes - 1))
 

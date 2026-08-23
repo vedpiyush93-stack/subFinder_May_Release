@@ -63,9 +63,14 @@ def main():
             base = agg[agg.shorthand == "cv__BRF100"].iloc[0]
             print(f"  Paper baseline cv__BRF100: {base.mean_acc:.4f} ± {base.std_acc:.4f}")
             print(f"  Gap (top - baseline): +{(top1.mean_acc - base.mean_acc)*100:.2f} pp")
-        if "ftSg__LSTMattn" in agg.shorthand.values:
-            dl = agg[agg.shorthand == "ftSg__LSTMattn"].iloc[0]
-            print(f"  Best paper DL ftSg__LSTMattn: {dl.mean_acc:.4f} ± {dl.std_acc:.4f}")
+        # Which deep configuration comes out on top is a result, not a constant: this
+        # line used to name ftSg__LSTMattn, which stopped being the best one. Take the
+        # max, the same way scripts/07c_build_paper_figures.py derives \DlAcc.
+        deep = agg[agg.shorthand.str.contains("__LSTM|__Trans|__JustAttn")]
+        if len(deep):
+            dl = deep.iloc[0]
+            print(f"  Best deep config {dl.shorthand}: {dl.mean_acc:.4f} ± {dl.std_acc:.4f}"
+                  f"  ({len(deep)} deep configs)")
             print(f"  Gap (top - best DL): +{(top1.mean_acc - dl.mean_acc)*100:.2f} pp")
 
 

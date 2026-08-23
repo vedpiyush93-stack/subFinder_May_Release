@@ -1,0 +1,10 @@
+# Pinned to the versions the released model was pickled with. scikit-learn in
+# particular must match: an estimator unpickled under a different minor version
+# either warns or fails outright, and a silent partial load is worse than either.
+# gradio 4.x imports HfFolder, which newer huggingface_hub removed; 5.x does not.
+gradio==5.50.0
+scikit-learn==1.8.0
+scipy==1.17.1
+numpy==2.0.2
+pandas==2.3.3
+joblib==1.5.3
