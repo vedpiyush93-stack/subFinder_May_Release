@@ -6,6 +6,7 @@ the same vote-count p-values and the same rule about which genes may be shown.
 """
 from __future__ import annotations
 import io
+import re
 import tempfile
 from pathlib import Path
 
@@ -215,6 +216,17 @@ _HEADER_HINTS = _ID_COLS + _SEQ_COLS
 
 
 def parse_table(path: str) -> list[tuple[str, str]]:
+    """Read a CSV or TSV of loci from a file."""
+    with open(path, encoding="utf-8", errors="replace", newline="") as fh:
+        return parse_table_stream(fh)
+
+
+def parse_table_text(text: str) -> list[tuple[str, str]]:
+    """Read a CSV or TSV of loci that arrived as pasted text."""
+    return parse_table_stream(io.StringIO(text))
+
+
+def parse_table_stream(fh) -> list[tuple[str, str]]:
     """Read a CSV or TSV of loci.
 
     A comma-delimited file is genuinely ambiguous here, because the gene string is
@@ -223,15 +235,14 @@ def parse_table(path: str) -> list[tuple[str, str]]:
     a header exists, and refuse rather than guess when it does not.
     """
     import csv as _csv
-    with open(path, encoding="utf-8", errors="replace", newline="") as fh:
-        sample = fh.read(8192); fh.seek(0)
-        try:
-            dialect = _csv.Sniffer().sniff(sample, delimiters=",\t;")
-        except _csv.Error:
-            dialect = _csv.excel_tab if "\t" in sample else _csv.excel
-        rows = [r for r in _csv.reader(fh, dialect) if any(c.strip() for c in r)]
+    sample = fh.read(8192); fh.seek(0)
+    try:
+        dialect = _csv.Sniffer().sniff(sample, delimiters=",\t;")
+    except _csv.Error:
+        dialect = _csv.excel_tab if "\t" in sample else _csv.excel
+    rows = [r for r in _csv.reader(fh, dialect) if any(c.strip() for c in r)]
     if not rows:
-        raise ValueError("the file is empty")
+        raise ValueError("there is nothing to read")
 
     header = [c.strip().lower() for c in rows[0]]
     has_header = any(h in _HEADER_HINTS for h in header)
@@ -270,6 +281,50 @@ def parse_table(path: str) -> list[tuple[str, str]]:
 def parse_cgc(path: str) -> list[tuple[str, str]]:
     """A dbCAN cgc_standard.out table, read exactly as the command-line tool reads it."""
     return list(cgc_to_pul_strings(path).items())
+
+
+def looks_like_cgc_text(text: str) -> bool:
+    """Is this pasted text a dbCAN CGC table rather than one locus per line?
+
+    People paste what they have. A CGC table read as one-locus-per-line turns every
+    gene row into its own locus and the header into a locus called ``CGC#``, none of
+    which carries a readable gene -- so the tool answers "no call" a dozen times over
+    instead of saying it was handed the wrong shape.
+    """
+    head = text.lstrip().splitlines()[:1]
+    if not head:
+        return False
+    first = head[0]
+    return "CGC#" in first or ("Gene Type" in first and "Protein Family" in first)
+
+
+def parse_cgc_text(text: str) -> list[tuple[str, str]]:
+    """Same as parse_cgc, for a table that arrived as pasted text."""
+    f = tempfile.NamedTemporaryFile(prefix="subfinder_cgc_", suffix=".out",
+                                    delete=False, mode="w", encoding="utf-8")
+    f.write(text)
+    f.close()
+    return parse_cgc(f.name)
+
+
+def looks_like_table_text(text: str) -> bool:
+    """Does this text open with a header naming a locus or gene-string column?"""
+    first = next((l for l in (text or "").splitlines() if l.strip()), "")
+    cells = [c.strip().strip('"').lower() for c in re.split(r"[,\t;]", first)]
+    return sum(c in _HEADER_HINTS for c in cells) >= 1 and len(cells) >= 2
+
+
+def parse_any(text: str) -> tuple[list[tuple[str, str]], str]:
+    """Read whichever accepted layout this text is, and say which it was.
+
+    The text box and the file upload both come through here, so the two cannot
+    drift apart: whatever you can upload, you can paste, and it is read the same way.
+    """
+    if looks_like_cgc_text(text):
+        return parse_cgc_text(text), "dbCAN CGC table"
+    if looks_like_table_text(text):
+        return parse_table_text(text), "table with a header row"
+    return parse_typed(text), "one locus per line"
 
 
 def to_csv(df: pd.DataFrame) -> str:

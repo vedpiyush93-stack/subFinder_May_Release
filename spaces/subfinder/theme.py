@@ -308,6 +308,19 @@ input[type=range] {{ accent-color:{TEAL}; }}
 .sf-sortable th.desc::after {{ content:"↓"; opacity:1; color:{TEAL}; }}
 .sf-tbl td.mono {{ font-family:'JetBrains Mono',monospace; font-size:.785rem; }}
 
+.sf-fmt-row {{ margin-bottom:15px; }}
+.sf-fmt-row b {{ font-size:.85rem; color:var(--sf-ink); }}
+.sf-fmt-row span {{ display:block; font-size:.79rem; color:var(--sf-muted);
+  line-height:1.55; margin:3px 0 6px; }}
+.sf-fmt-row pre {{
+  background:#f4f8f8; border:1px solid var(--sf-rule); border-radius:8px;
+  padding:9px 11px; overflow-x:auto; font-family:'JetBrains Mono',monospace;
+  font-size:.735rem; color:#3d5257; line-height:1.55; margin:0;
+}}
+.sf-fmt-row code {{ font-family:'JetBrains Mono',monospace; font-size:.74rem;
+  background:#eef3f3; padding:1px 5px; border-radius:4px; }}
+.sf-fmt-note {{ font-size:.78rem; color:var(--sf-teal); background:{MINT};
+  border:1px solid #bcd9d5; border-radius:9px; padding:9px 12px; margin:0; line-height:1.55; }}
 .sf-cheat {{ margin-top:20px; padding-top:18px; border-top:1px solid var(--sf-rule); }}
 .sf-cheat-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(228px,1fr));
   gap:13px 22px; }}

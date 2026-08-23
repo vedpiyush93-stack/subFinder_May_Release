@@ -54,7 +54,10 @@ the model uses them as evidence. Gene order does not matter.</p>
 <h4>2 &nbsp;Four ways to submit</h4>
 
 <p><b>A &nbsp;Type or paste.</b> One locus per line. Put a name before a <b>tab</b> to carry
-it into the results; otherwise loci are numbered for you.</p>
+it into the results; otherwise loci are numbered for you. A dbCAN
+<code>cgc_standard.out</code> table can also be pasted straight into this box &mdash; it is
+recognised from its header and each CGC becomes one locus, exactly as if you had uploaded
+it.</p>
 <pre>alginate_demo&#9;1.B.14.12.1,GntR,PL6|PL6_1,PL17_2|PL17,2.A.1.14.25,null
 my_locus_2&#9;GH13_1,GH13,CBM48,SusC,1.B.14.6.1,GH31,null</pre>
 
@@ -136,6 +139,33 @@ failing.</p>
 
 </div>
 """
+PASTE_FORMATS = """
+<div class="sf-fmt">
+  <p class="sf-label" style="margin:0 0 10px">Three things you can paste</p>
+
+  <div class="sf-fmt-row"><b>1 &nbsp;One locus per line</b>
+  <span>Comma-separated gene labels. An optional name before a <b>tab</b> is kept.</span>
+  <pre>alginate_demo&#9;1.B.14.12.1,GntR,PL6|PL6_1,PL17_2|PL17,null
+starch_demo&#9;GH13_1,GH13,CBM48,SusC,1.B.14.6.1,GH31,null</pre></div>
+
+  <div class="sf-fmt-row"><b>2 &nbsp;A CSV or TSV, header and all</b>
+  <span>In a CSV the gene string <b>must be quoted</b>, because it contains commas itself.
+  A TSV needs no quoting.</span>
+  <pre>locus_id,sequence
+my_locus_1,"1.B.14.12.1,GntR,PL6|PL6_1,PL17_2|PL17,null"
+my_locus_2,"GH13_1,GH13,CBM48,SusC,GH31,null"</pre></div>
+
+  <div class="sf-fmt-row"><b>3 &nbsp;A dbCAN CGC table, unchanged</b>
+  <span>Paste <code>cgc_standard.out</code> exactly as dbCAN wrote it. Each CGC becomes one
+  locus; the header is recognised, not read as data.</span>
+  <pre>CGC#&#9;Gene Type&#9;Contig ID&#9;Protein ID&#9;Gene Start&#9;Gene Stop&#9;Direction&#9;Protein Family
+CGC1&#9;CAZyme&#9;scaffold_1&#9;prot_0001&#9;2448722&#9;2450259&#9;-&#9;GH13
+CGC1&#9;TC&#9;scaffold_1&#9;prot_0002&#9;2450918&#9;2454653&#9;+&#9;1.B.14.6.1</pre></div>
+
+  <p class="sf-fmt-note">All three work here and in <b>Upload a file</b> &mdash; the format is
+  detected from the content, so the same text gives the same answer either way.</p>
+</div>"""
+
 CHEATSHEET = """
 <div class="sf-cheat">
   <p class="sf-label" style="margin:0 0 9px">Labels the model reads</p>
@@ -207,7 +237,8 @@ def _run(items, gene_k, min_prob, show_all, progress):
 
 
 def run_typed(text, gene_k, min_prob, show_all, progress=gr.Progress()):
-    return _run(engine.parse_typed(text), gene_k, min_prob, show_all, progress)
+    items, _ = engine.parse_any(text or "")
+    return _run(items, gene_k, min_prob, show_all, progress)
 
 
 def run_file(file, gene_k, min_prob, show_all, progress=gr.Progress()):
@@ -218,15 +249,10 @@ def run_file(file, gene_k, min_prob, show_all, progress=gr.Progress()):
                 gr.update(value="Choose a file first.", visible=True))
     path = file.name if hasattr(file, "name") else str(file)
     try:
-        if _looks_like_cgc(path):
-            items = engine.parse_cgc(path)
-            kind = "dbCAN CGC table"
-        elif path.lower().endswith((".csv", ".tsv")):
-            items = engine.parse_table(path)
-            kind = "table"
-        else:
-            items = engine.parse_typed(open(path, encoding="utf-8", errors="replace").read())
-            kind = "one locus per line"
+        # The same reader the text box uses, so an upload and a paste of the same
+        # content cannot be read differently. Detection is on content, not extension.
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            items, kind = engine.parse_any(fh.read())
     except Exception as e:
         return (render.results_html(pd.DataFrame()),
                 gr.DownloadButton(interactive=False),
@@ -236,12 +262,6 @@ def run_file(file, gene_k, min_prob, show_all, progress=gr.Progress()):
                                 f"layouts.", visible=True))
     return _run(items, gene_k, min_prob, show_all, progress)
 
-
-def _looks_like_cgc(path: str) -> bool:
-    """A dbCAN cgc_standard.out has a CGC# column; a plain list of loci does not."""
-    with open(path, encoding="utf-8", errors="replace") as fh:
-        head = fh.readline()
-    return "CGC#" in head or ("Gene Type" in head and "Protein Family" in head)
 
 
 with gr.Blocks(theme=THEME, css=CSS, head=SORT_JS, js=FORCE_LIGHT,
@@ -258,8 +278,12 @@ with gr.Blocks(theme=THEME, css=CSS, head=SORT_JS, js=FORCE_LIGHT,
                                     "separated by a tab.",
                         info="One locus per line: comma-separated gene labels, "
                              "pipes for alternative annotations of the same gene. "
-                             "An optional name before a tab is carried into the results.")
+                             "An optional name before a tab is carried into the results. "
+                             "You can also paste a dbCAN cgc_standard.out table straight "
+                             "in here \u2014 it is detected from the header.")
                     go_text = gr.Button("Predict", variant="primary", size="lg")
+                    with gr.Accordion("What can I paste in here?", open=False):
+                        gr.HTML(PASTE_FORMATS)
                     gr.HTML(CHEATSHEET)
                 with gr.Tab("Upload a file"):
                     upload = gr.File(
