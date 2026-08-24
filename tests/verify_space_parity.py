@@ -70,8 +70,13 @@ from src.inference.predict_one import PULPredictor
 b = joblib.load(%(root)r + "/artifacts/final_model_v2.pkl")
 p = PULPredictor(b["pipeline"], float(b["T"]))
 cases = json.loads(sys.argv[1])
+from src.lit_validation.canon import build_canon
+from src.lit_validation.alias_map import SUBSTRATE_ALIAS
+_canon = build_canon(%(root)r + "/data/Literature_Data_fam_substrate_mapping.tsv",
+                     SUBSTRATE_ALIAS)
 out = {"meta": {"T": float(b["T"]), "classes": [str(c) for c in b["classes"]],
                 "vocab": sorted(p._vocab),
+                "canon": {k: sorted(v) for k, v in sorted(_canon.items())},
                 "min_informative": PULPredictor.MIN_INFORMATIVE_TOKENS,
                 "not_a_gene": sorted(PULPredictor.NOT_A_GENE)},
        "loci": {}}
@@ -99,6 +104,7 @@ cases = json.loads(sys.argv[1])
 df = engine.predict_frame([(n, s) for n, s in cases])
 out = {"meta": {"T": float(engine.T), "classes": list(engine.CLASSES),
                 "vocab": sorted(engine.VOCAB),
+                "canon": {k: sorted(v) for k, v in sorted(engine.CANON.items())},
                 "min_informative": int(engine.MIN_INFORMATIVE),
                 "not_a_gene": sorted(engine.NOT_A_GENE),
                 "alpha": float(engine.ALPHA), "n_trees": int(engine.NTREES),
@@ -165,6 +171,24 @@ def test_shared_modules_identical(rel):
     a = hashlib.sha256((ROOT / rel).read_bytes()).hexdigest()
     b = hashlib.sha256((SPACE / rel).read_bytes()).hexdigest()
     assert a == b, f"{rel} differs between the research tree and the deployed Space"
+
+
+def test_fused_literature_canon_is_identical(cli, space):
+    """The label merge itself, not just the files that produce it.
+
+    The fusion is not baked into the TSV: the curated table carries 61 fine-grained
+    substrate names, and alias_map.py collapses them to the 12 classes at load time.
+    So matching file hashes are necessary but not sufficient -- what has to agree is
+    the mapping both sides actually end up with.
+    """
+    a, b = cli["meta"]["canon"], space["meta"]["canon"]
+    assert set(a) == set(b), "the two trees fuse to different substrate classes"
+    diffs = {k: (sorted(set(a[k]) - set(b[k])), sorted(set(b[k]) - set(a[k])))
+             for k in a if a[k] != b[k]}
+    assert not diffs, f"the fused canon differs: {diffs}"
+    n = sum(len(v) for v in a.values())
+    assert len(a) == 12, f"expected 12 substrate classes, got {len(a)}"
+    print(f"\n  fused canon: {len(a)} substrates, {n} (substrate, family) pairs, identical")
 
 
 def test_literature_table_identical():
